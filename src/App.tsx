@@ -160,6 +160,8 @@ export default function App() {
   // —— 排列与数量 ——
   const [order, setOrder] = useState<OrderBy>("book");
   const [pickN, setPickN] = useState(0); // 0 = 全取
+  // 随机种子：换一批才变，预览与导出共用，避免"看到的和导出的是两批词"
+  const [seed, setSeed] = useState(1);
 
   // —— 中文来源（有序，勾选的才用） ——
   const [senseAll, setSenseAll] = useState<SenseSource[]>(ALL_SENSES);
@@ -216,8 +218,9 @@ export default function App() {
       kinds,
       order,
       limit: order === "random" && pickN > 0 ? pickN : null,
+      seed,
     }),
-    [bookIds, units, pagesText, initials, markers, query, mode, kinds, order, pickN],
+    [bookIds, units, pagesText, initials, markers, query, mode, kinds, order, pickN, seed],
   );
 
   // 输入变化 → 防抖后重新统计与预览
@@ -467,6 +470,15 @@ export default function App() {
               onChange={(e) => setPickN(Math.max(0, Number(e.target.value) || 0))}
             />
           </label>
+          {order === "random" && (
+            <Button
+              size="sm"
+              className="mt-2 w-full"
+              onClick={() => setSeed((s) => (s * 1103515245 + 12345) % 2147483647 || 1)}
+            >
+              换一批
+            </Button>
+          )}
         </Panel>
       </aside>
 

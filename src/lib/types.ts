@@ -48,6 +48,8 @@ export type Filter = {
   kinds: ("word" | "phrase")[];
   order: OrderBy;
   limit: number | null;
+  /** 随机种子：预览与导出共用同一个，保证看到的就是导出的 */
+  seed: number;
 };
 
 /** 排列顺序：书后单词表顺序 / 首字母 / 随机 */

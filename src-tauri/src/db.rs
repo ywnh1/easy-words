@@ -35,7 +35,7 @@ pub struct BookInfo {
     pub with_examples: i64,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(default)]
 pub struct Filter {
     pub book_ids: Vec<String>,
@@ -57,6 +57,9 @@ pub struct Filter {
     pub order: Option<String>,
     /// 随机抽取的条数；None 表示全取（配合 order=random 时生效）
     pub limit: Option<usize>,
+    /// 随机种子。同一个种子 + 同样的筛选条件必得同样一批词，
+    /// 这样预览里看到的、和真正导出的是同一批（逐词提示覆盖才有意义）。
+    pub seed: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -451,7 +454,7 @@ pub fn query(con: &Connection, f: &Filter, limit: Option<usize>) -> rusqlite::Re
 
     // 顺序：首字母 / 书后顺序在 SQL 里已排好；随机在合并后打乱才公平
     if f.order.as_deref() == Some("random") {
-        shuffle(&mut out);
+        shuffle(&mut out, f.seed.unwrap_or_else(|| time_seed()));
     }
     // 出题条数：随机时截断到 n 个；不给就是全取
     if let Some(n) = f.limit {
@@ -477,13 +480,23 @@ fn split_query(q: &str) -> Vec<String> {
         .collect()
 }
 
-/// xorshift：不引入 rand 依赖，够用且可复现（同一次导出内稳定）。
-fn shuffle<T>(v: &mut Vec<T>) {
-    let mut seed = std::time::SystemTime::now()
+fn time_seed() -> u64 {
+    std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0x9E3779B97F4A7C15)
-        | 1;
+        | 1
+}
+
+/// xorshift：不引入 rand 依赖。给定同一个 seed 结果固定可复现。
+fn shuffle<T>(v: &mut Vec<T>, seed: u64) {
+    // 先做一次 splitmix 混合：相邻的小种子（1/2/3…）如果不打散，
+    // xorshift 前几轮会算出相同的下标，换种子等于没换。
+    let mut seed = seed.wrapping_add(0x9E3779B97F4A7C15);
+    seed = (seed ^ (seed >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    seed = (seed ^ (seed >> 27)).wrapping_mul(0x94D049BB133111EB);
+    seed ^= seed >> 31;
+    seed |= 1;
     for i in (1..v.len()).rev() {
         seed ^= seed << 13;
         seed ^= seed >> 7;
@@ -600,6 +613,111 @@ mod tests {
         for e in &v {
             assert!(seen.insert(e.word.to_lowercase()), "{} 重复出现", e.word);
         }
+    }
+
+    /// 同一个种子 + 同样的条件必须得到同一批词，
+    /// 否则预览里设的逐词提示会在导出时落空。
+    #[test]
+    fn random_is_reproducible_for_same_seed() {
+        let con = seed_conn("seed");
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-1".into()],
+            order: Some("random".into()),
+            limit: Some(6),
+            seed: Some(42),
+            ..Default::default()
+        };
+        let a: Vec<String> = query(&con, &f, None).unwrap().into_iter().map(|e| e.word).collect();
+        let b: Vec<String> = query(&con, &f, Some(40)).unwrap().into_iter().map(|e| e.word).collect();
+        assert_eq!(a.len(), 6, "应随机抽 6 个");
+        assert_eq!(a, b, "预览与导出必须是同一批：{a:?} vs {b:?}");
+
+        let g = Filter { seed: Some(43), ..f.clone() };
+        let c: Vec<String> = query(&con, &g, None).unwrap().into_iter().map(|e| e.word).collect();
+        assert_ne!(a, c, "换种子应该换一批");
+        assert_eq!(c.len(), 6);
+    }
+
+    /// 随机抽取要能从指定书/单元/页码的范围内取。
+    #[test]
+    fn random_respects_scope() {
+        let con = seed_conn("scope");
+
+        // 指定书
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-2".into()],
+            order: Some("random".into()),
+            limit: Some(5),
+            seed: Some(7),
+            ..Default::default()
+        };
+        let v = query(&con, &f, None).unwrap();
+        assert_eq!(v.len(), 5);
+        assert!(v.iter().all(|e| e.book.contains("第二册")));
+
+        // 指定单元
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-1".into()],
+            units: vec![3],
+            order: Some("random".into()),
+            limit: Some(4),
+            seed: Some(7),
+        ..Default::default()
+        };
+        let v = query(&con, &f, None).unwrap();
+        assert_eq!(v.len(), 4);
+        assert!(v.iter().all(|e| e.unit_no == 3), "应只来自 UNIT 3");
+
+        // 指定页码
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-1".into()],
+            pages: vec![5],
+            order: Some("random".into()),
+            limit: Some(3),
+            seed: Some(7),
+            ..Default::default()
+        };
+        let v = query(&con, &f, None).unwrap();
+        assert!(v.len() <= 3);
+        assert!(v.iter().all(|e| e.page == Some(5)));
+    }
+
+    /// 只单词 / 只短语。
+    #[test]
+    fn kinds_split_words_and_phrases() {
+        let con = seed_conn("kinds");
+        for (kind, want_phrase) in [("word", false), ("phrase", true)] {
+            let f = Filter {
+                book_ids: vec!["waiyanshe-required-1".into()],
+                kinds: vec![kind.into()],
+                ..Default::default()
+            };
+            let v = query(&con, &f, None).unwrap();
+            assert!(!v.is_empty(), "{kind} 应有结果");
+            assert!(
+                v.iter().all(|e| e.is_phrase == want_phrase),
+                "{kind} 过滤后混进了别的类型"
+            );
+        }
+    }
+
+    /// 首字母排列 = 按首字母升序。
+    #[test]
+    fn order_by_initial_sorts() {
+        let con = seed_conn("order");
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-1".into()],
+            order: Some("initial".into()),
+            ..Default::default()
+        };
+        let v = query(&con, &f, None).unwrap();
+        let initials: Vec<char> = v
+            .iter()
+            .map(|e| e.word.chars().next().unwrap().to_ascii_lowercase())
+            .collect();
+        let mut sorted = initials.clone();
+        sorted.sort();
+        assert_eq!(initials, sorted, "首字母顺序不对");
     }
 
     #[test]
