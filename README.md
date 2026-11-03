@@ -66,6 +66,20 @@ cargo test              # 词库查询 + 四种卷面的 PDF 冒烟测试
 cargo check
 ```
 
+### 纯前端预览（手机上直接看界面）
+
+没有构建桌面/安卓客户端时，也可以打一个单文件 HTML，手机浏览器双击就能打开：
+
+```sh
+pnpm mock            # 从种子库导出精简数据 → src/lib/mock-data.ts
+pnpm preview:build   # 单文件 → /storage/emulated/0/用户/易词预览/index.html
+pnpm preview:verify  # 用 jsdom 真跑一遍，确认能渲染、按钮能点
+```
+
+这份预览用的是真实词库的一小部分（每本书 UNIT 1 前 48 条），筛选、排序、题型切换都能点，
+但生成 PDF 需要真实后端，会提示不可用。正式安装包里不会带这份 mock 数据 ——
+`src/lib/api.ts` 用动态 import，只在没有 Tauri 时才加载。
+
 ### 数据流水线
 
 所有词库都是 TSV 源文件，编译成一个 SQLite 种子库：

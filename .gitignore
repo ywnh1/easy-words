@@ -8,3 +8,4 @@ src-tauri/resources/*.tmp
 *.log
 .DS_Store
 sample.pdf
+dist-preview/

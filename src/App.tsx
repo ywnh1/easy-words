@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { catalog, countEntries, exportPdf, inTauri, openPath, preview as fetchPreview } from "./lib/api";
 import { Button, Check, Chip, Panel, Select, TextInput } from "./components/ui";
 import { cn } from "./lib/cn";
 import {
@@ -11,7 +10,6 @@ import {
   SENSE_LABEL,
   type BookInfo,
   type EntryView,
-  type ExportResult,
   type Field,
   type Filter,
   type Hint,
@@ -190,7 +188,7 @@ export default function App() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    invoke<BookInfo[]>("catalog")
+    catalog()
       .then((list) => {
         setBooks(list);
         setBookIds(list.map((b) => b.id));
@@ -233,10 +231,7 @@ export default function App() {
     }
     const id = ++seq.current;
     const t = setTimeout(() => {
-      Promise.all([
-        invoke<EntryView[]>("preview", { filter, limit: 40 }),
-        invoke<number>("count_entries", { filter }),
-      ])
+      Promise.all([fetchPreview(filter, 40), countEntries(filter)])
         .then(([list, n]) => {
           if (id !== seq.current) return;
           setPreview(list);
@@ -295,7 +290,7 @@ export default function App() {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await invoke<ExportResult>("export_pdf", { filter, spec });
+      const res = await exportPdf(filter, spec);
       setMsg({ ok: true, text: `已生成 ${res.count} 题 → ${res.path}` });
       try {
         await openPath(res.path);
@@ -327,6 +322,11 @@ export default function App() {
 
   return (
     <div className="mx-auto flex h-full max-w-[1500px] flex-col gap-3 p-3 lg:flex-row">
+      {!inTauri && (
+        <div className="fixed inset-x-0 top-0 z-10 bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-900 backdrop-blur dark:text-amber-200">
+          界面预览版：数据是真实词库的一小部分，筛选和预览可用，生成 PDF 需要桌面或安卓客户端。
+        </div>
+      )}
       {/* ── 左：范围 ─────────────────────────────── */}
       <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto pb-2 lg:w-[330px]">
         <Panel title="教材">
