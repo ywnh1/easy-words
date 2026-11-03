@@ -2,7 +2,10 @@
 """从种子库导出一份精简数据，供纯前端预览用。
 
 手机上直接打开 HTML 时没有 Rust 后端，界面要靠这份数据渲染。
-只取每本书 UNIT 1 的前若干条，够看清筛选、预览、题型效果即可。
+
+关键：导出的元数据（每本书多少条、有哪些单元/页码/首字母）必须和
+导出的词条本身一致，否则预览里会出现「书上写着 491 条、实际只能查到 48 条」
+「列了 UNIT 1-6 但选 UNIT 2 就空了」这种自相矛盾。
 
 用法：python3 scripts/export_mock.py
 输出：src/lib/mock-data.ts
@@ -12,89 +15,46 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DB = ROOT / "src-tauri/resources/seed.sqlite"
 OUT = ROOT / "src/lib/mock-data.ts"
 
-PER_BOOK = 48
+# 每本书导出多少条，以及覆盖前几个单元
+PER_BOOK = 60
+UNITS_PER_BOOK = 2
 
 
 def main() -> int:
     con = sqlite3.connect(DB)
     con.row_factory = sqlite3.Row
 
-    books = []
-    for b in con.execute(
-        "SELECT id,title,COALESCE(volume,'') volume,kind,sort_order FROM books ORDER BY sort_order"
-    ):
-        bid = b["id"]
-        total = con.execute("SELECT COUNT(*) FROM entries WHERE book_id=?", (bid,)).fetchone()[0]
-        units = [
-            {"key": str(r[0]), "count": r[1]}
-            for r in con.execute(
-                "SELECT unit_no, COUNT(*) FROM entries WHERE book_id=? GROUP BY unit_no ORDER BY unit_no",
-                (bid,),
-            )
-        ]
-        pages = [
-            {"key": str(r[0]), "count": r[1]}
-            for r in con.execute(
-                "SELECT page, COUNT(*) FROM entries WHERE book_id=? AND page IS NOT NULL"
-                " GROUP BY page ORDER BY page",
-                (bid,),
-            )
-        ]
-        initials = [
-            {"key": r[0], "count": r[1]}
-            for r in con.execute(
-                "SELECT initial, COUNT(*) FROM entries WHERE book_id=? GROUP BY initial ORDER BY initial",
-                (bid,),
-            )
-        ]
-        markers = {
-            r[0]: r[1]
-            for r in con.execute(
-                "SELECT marker, COUNT(*) FROM entries WHERE book_id=? GROUP BY marker", (bid,)
-            )
-        }
-        sources = {
-            r[0]: r[1]
-            for r in con.execute(
-                "SELECT source_kind, COUNT(*) FROM entries WHERE book_id=? GROUP BY source_kind",
-                (bid,),
-            )
-        }
-        with_ex = con.execute(
-            "SELECT COUNT(DISTINCT e.id) FROM entries e JOIN examples x ON x.entry_id=e.id"
-            " WHERE e.book_id=?",
-            (bid,),
-        ).fetchone()[0]
-        books.append(
-            {
-                "id": bid,
-                "title": b["title"],
-                "volume": b["volume"],
-                "kind": b["kind"],
-                "sort_order": b["sort_order"],
-                "total": total,
-                "units": units,
-                "pages": pages,
-                "initials": initials,
-                "markers": markers,
-                "sources": sources,
-                "with_examples": with_ex,
-            }
+    books_meta = list(
+        con.execute(
+            "SELECT id,title,COALESCE(volume,'') volume,kind,sort_order"
+            " FROM books ORDER BY sort_order"
         )
+    )
 
-    rows = []
-    for b in books:
-        for e in con.execute(
-            "SELECT id,word,phonetic,pos,meaning,is_phrase,marker,unit_no,page"
-            " FROM entries WHERE book_id=? AND unit_no=1 ORDER BY seq, id LIMIT ?",
-            (b["id"], PER_BOOK),
-        ):
+    rows: list[dict] = []
+    books: list[dict] = []
+
+    for b in books_meta:
+        bid = b["id"]
+        picked = list(
+            con.execute(
+                "SELECT id,word,phonetic,pos,meaning,is_phrase,marker,unit_no,page"
+                " FROM entries WHERE book_id=? AND unit_no<=?"
+                " ORDER BY unit_no, seq, id LIMIT ?",
+                (bid, UNITS_PER_BOOK, PER_BOOK),
+            )
+        )
+        if not picked:
+            continue
+
+        for e in picked:
             eid = e["id"]
             senses = [
                 {"source": r[0], "pos": r[1], "zh": r[2]}
@@ -110,7 +70,7 @@ def main() -> int:
             ]
             rows.append(
                 {
-                    "book_id": b["id"],
+                    "book_id": bid,
                     "word": e["word"],
                     "phonetic": e["phonetic"],
                     "pos": e["pos"],
@@ -125,6 +85,30 @@ def main() -> int:
                 }
             )
 
+        # 元数据全部由「实际导出的这些词条」统计，保证和上面的 rows 一致
+        units = Counter(r["unit_no"] for r in rows if r["book_id"] == bid)
+        pages = Counter(r["page"] for r in rows if r["book_id"] == bid and r["page"] is not None)
+        initials = Counter(r["word"][:1].lower() for r in rows if r["book_id"] == bid)
+        markers = Counter(r["marker"] for r in rows if r["book_id"] == bid)
+        with_ex = len({r["word"].lower() for r in rows if r["book_id"] == bid and r["examples"]})
+
+        books.append(
+            {
+                "id": bid,
+                "title": b["title"],
+                "volume": b["volume"],
+                "kind": b["kind"],
+                "sort_order": b["sort_order"],
+                "total": sum(units.values()),
+                "units": [{"key": str(k), "count": v} for k, v in sorted(units.items())],
+                "pages": [{"key": str(k), "count": v} for k, v in sorted(pages.items())],
+                "initials": [{"key": k, "count": v} for k, v in sorted(initials.items())],
+                "markers": dict(markers),
+                "sources": {"textbook": sum(units.values())},
+                "with_examples": with_ex,
+            }
+        )
+
     payload = {"books": books, "entries": rows}
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(
@@ -136,7 +120,7 @@ def main() -> int:
         encoding="utf-8",
     )
     print(
-        f"{OUT}: {len(books)} 本书, {len(rows)} 条词条, {OUT.stat().st_size/1024:.0f} KB",
+        f"{OUT}: {len(books)} 本书, {len(rows)} 条词条, {OUT.stat().st_size / 1024:.0f} KB",
         file=sys.stderr,
     )
     return 0

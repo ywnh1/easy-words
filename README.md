@@ -57,6 +57,24 @@
 词汇标记沿用教材印刷符号：无符号 = 必修单词，`*` = 不作要求，`□` = 选择性必修。
 筛选面板里可以按这三类分别取词。
 
+## 界面
+
+- **首页**：只有「开始出题」和「关于」两个入口。
+- **出题向导**：五步一问一答 —— 范围 → 排列与数量 → 题型 → 题型细节 → 中文与导出。
+  每一步单独一屏，底部有「上一步 / 下一步」；第一步的教材是必填，没选时「下一步」是灰的。
+  每个配置项后面有个小问号，点开是说明弹窗。
+- **关于**：版本号、开源协议、仓库地址、Issue 地址。
+
+组件库用 [Mantine](https://mantine.dev) v9（`@mantine/core` + `@mantine/hooks`）：
+`Stepper` 做步骤条、`Modal` 做说明弹窗、`MultiSelect`/`Chip`/`SegmentedControl`/`NumberInput`
+等做表单控件。Tailwind 只留作布局与少量微调 ——
+`src/index.css` 开头声明了 `@layer mantine, theme, base, components, utilities`，
+让 Tailwind 的工具类能覆盖 Mantine 的默认样式；Mantine 侧用 `styles.layer.css`。
+
+版本号只有一个来源：`package.json`，由 `vite.config.ts` 的 `define` 注入成 `__APP_VERSION__`。
+仓库地址等元信息在 `src/lib/meta.ts`，建好仓库后填 `repo` 字段即可，
+Issue 地址会自动由它推导。
+
 ## 开发
 
 ```sh
@@ -83,6 +101,9 @@ pnpm mock            # 从种子库导出精简数据 → src/lib/mock-data.ts
 pnpm preview:build   # 单文件 → /storage/emulated/0/用户/易词预览/index.html
 pnpm preview:verify  # 用 jsdom 真跑一遍，确认能渲染、按钮能点
 ```
+
+`preview:verify` 会走完：首页 → 关于页 → 向导五步 → 问号弹窗 → 必填校验 → 回退，
+任何一步渲染不出来或按钮点不动都会失败。
 
 这份预览用的是真实词库的一小部分（每本书 UNIT 1 前 48 条），筛选、排序、题型切换都能点，
 但生成 PDF 需要真实后端，会提示不可用。正式安装包里不会带这份 mock 数据 ——
