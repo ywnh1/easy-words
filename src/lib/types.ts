@@ -19,6 +19,8 @@ export type BookInfo = {
 
 export type Example = { en: string; zh: string; source: string; label: string };
 
+export type Sense = { source: string; pos: string; zh: string };
+
 export type EntryView = {
   word: string;
   phonetic: string;
@@ -30,6 +32,7 @@ export type EntryView = {
   unit_no: number;
   page: number | null;
   examples: Example[];
+  senses: Sense[];
 };
 
 export type Filter = {
@@ -41,19 +44,74 @@ export type Filter = {
   sources: string[];
   query: string;
   shuffle: boolean;
-  /** 中译英 / 单词表需要中文题干 */
   needs_meaning: boolean;
+  kinds: ("word" | "phrase")[];
+  order: OrderBy;
+  limit: number | null;
 };
 
-export type Kind = "cn2_en" | "en2_cn" | "table" | "blank";
-export type Hint = "none" | "zh" | "en" | "initial";
+/** 排列顺序：书后单词表顺序 / 首字母 / 随机 */
+export type OrderBy = "book" | "initial" | "random";
+
+export type Mode = "columns" | "sentence" | "cloze" | "notes";
+export type Field = "word" | "phonetic" | "meaning" | "blank";
+export type Hint = "none" | "zh" | "en" | "phonetic" | "initial";
+export type SenseSource =
+  | "textbook"
+  | "oxford_high"
+  | "collins"
+  | "oxford_bilingual"
+  | "ai";
 
 export type Spec = {
-  kind: Kind;
+  mode: Mode;
+  fields: Field[];
   hint?: Hint;
+  overrides: Record<string, Hint>;
+  pool?: number;
+  blanks?: number;
+  sense_sources: SenseSource[];
+  example_sources: string[];
   answer_key: boolean;
   title?: string;
   subtitle?: string;
 };
 
 export type ExportResult = { path: string; count: number };
+
+export const FIELD_LABEL: Record<Field, string> = {
+  word: "英文",
+  phonetic: "音标",
+  meaning: "中文",
+  blank: "默写",
+};
+
+export const HINT_LABEL: Record<Hint, string> = {
+  none: "只挖空",
+  zh: "中文",
+  en: "英文",
+  phonetic: "音标",
+  initial: "首字母",
+};
+
+export const SENSE_LABEL: Record<SenseSource, string> = {
+  textbook: "书后中文",
+  oxford_high: "牛津高阶",
+  collins: "柯林斯",
+  oxford_bilingual: "牛津双解",
+  ai: "AI 翻译",
+};
+
+export const MODE_LABEL: Record<Mode, string> = {
+  columns: "四选 n",
+  sentence: "句子默写",
+  cloze: "选词填空",
+  notes: "笔记模式",
+};
+
+export const MODE_DESC: Record<Mode, string> = {
+  columns: "从英文/音标/中文/默写里选若干列，顺序可调。有默写列才出答案。",
+  sentence: "例句挖空，可为每个词单独指定提示方式。",
+  cloze: "方框里给 n 个短语，下面出 n-m 个句子，不含提示。",
+  notes: "英文 + 音标 + 多来源中文 + 例句，供整理复习，无答案页。",
+};

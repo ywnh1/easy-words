@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub const SEED: &[u8] = include_bytes!("../resources/seed.sqlite");
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 #[derive(Debug, Serialize)]
 pub struct Bucket {
@@ -51,6 +51,12 @@ pub struct Filter {
     pub shuffle: bool,
     /// 中译英 / 单词表需要中文题干，跳过只有英文的扩充短语
     pub needs_meaning: bool,
+    /// word / phrase —— 只出单词或只出短语
+    pub kinds: Vec<String>,
+    /// book（书后顺序）/ initial（首字母）/ random
+    pub order: Option<String>,
+    /// 随机抽取的条数；None 表示全取（配合 order=random 时生效）
+    pub limit: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -59,6 +65,14 @@ pub struct Example {
     pub zh: String,
     pub source: String,
     pub label: String,
+}
+
+/// 一条中文释义，带来源，供前端按优先级挑用。
+#[derive(Debug, Serialize, Clone)]
+pub struct Sense {
+    pub source: String,
+    pub pos: String,
+    pub zh: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -74,6 +88,8 @@ pub struct EntryView {
     pub unit_no: i64,
     pub page: Option<i64>,
     pub examples: Vec<Example>,
+    /// 所有来源的中文释义
+    pub senses: Vec<Sense>,
 }
 
 /// 保证应用数据目录里有一份可用的库；版本不符就重新拷贝。
@@ -257,7 +273,27 @@ pub fn query(con: &Connection, f: &Filter, limit: Option<usize>) -> rusqlite::Re
         }
     }
     if f.needs_meaning {
-        sql.push_str(" AND e.meaning <> ''");
+        // 中文字典来源可以来自任意词典，所以看 senses 而不是教材释义
+        sql.push_str(" AND EXISTS(SELECT 1 FROM senses s WHERE s.entry_id = e.id AND s.zh <> '')");
+    }
+    if !f.kinds.is_empty() {
+        // kinds 只认 word / phrase，映射到 is_phrase
+        let vals: Vec<i64> = f
+            .kinds
+            .iter()
+            .filter_map(|k| match k.as_str() {
+                "word" => Some(0),
+                "phrase" => Some(1),
+                _ => None,
+            })
+            .collect();
+        if !vals.is_empty() {
+            let ph = placeholders(vals.len());
+            sql.push_str(&format!(" AND e.is_phrase IN ({ph})"));
+            for v in vals {
+                args.push(Box::new(v));
+            }
+        }
     }
     let needles = split_query(&f.query);
     if !needles.is_empty() {
@@ -271,9 +307,10 @@ pub fn query(con: &Connection, f: &Filter, limit: Option<usize>) -> rusqlite::Re
         args.push(Box::new(format!("% {}%", needles.join(" "))));
     }
 
-    sql.push_str(" ORDER BY b.sort_order, e.unit_no, e.seq, e.id");
-    if let Some(n) = limit {
-        sql.push_str(&format!(" LIMIT {}", n.saturating_mul(8).max(64)));
+    // 排序在合并同形词之后才准确（随机尤其如此），这里只给它一个稳定基准
+    match f.order.as_deref() {
+        Some("initial") => sql.push_str(" ORDER BY e.initial, e.word_lower, e.id"),
+        _ => sql.push_str(" ORDER BY b.sort_order, e.unit_no, e.seq, e.id"),
     }
 
     let mut st = con.prepare(&sql)?;
@@ -330,6 +367,7 @@ pub fn query(con: &Connection, f: &Filter, limit: Option<usize>) -> rusqlite::Re
                         unit_no,
                         page,
                         examples: vec![],
+                        senses: vec![],
                     },
                 );
             }
@@ -374,9 +412,52 @@ pub fn query(con: &Connection, f: &Filter, limit: Option<usize>) -> rusqlite::Re
         }
     }
 
+    // 各来源的中文释义：同样批量取，供前端按优先级挑选
+    if !all_ids.is_empty() {
+        let mut by_entry: std::collections::HashMap<i64, Vec<Sense>> = Default::default();
+        for chunk in all_ids.chunks(400) {
+            let ph = placeholders(chunk.len());
+            let sql = format!(
+                "SELECT entry_id, source, pos, zh FROM senses WHERE entry_id IN ({ph})"
+            );
+            let mut st = con.prepare(&sql)?;
+            let rows = st.query_map(params_from_iter(chunk.iter()), |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    Sense {
+                        source: r.get(1)?,
+                        pos: r.get(2)?,
+                        zh: r.get(3)?,
+                    },
+                ))
+            })?;
+            for row in rows {
+                let (id, sn) = row?;
+                by_entry.entry(id).or_default().push(sn);
+            }
+        }
+        for (low, entry_ids) in &ids {
+            if let Some(v) = map.get_mut(low) {
+                for id in entry_ids {
+                    if let Some(list) = by_entry.get(id) {
+                        v.senses.extend(list.iter().cloned());
+                    }
+                }
+            }
+        }
+    }
+
     let mut out: Vec<EntryView> = order.into_iter().filter_map(|k| map.remove(&k)).collect();
-    if f.shuffle {
+
+    // 顺序：首字母 / 书后顺序在 SQL 里已排好；随机在合并后打乱才公平
+    if f.order.as_deref() == Some("random") {
         shuffle(&mut out);
+    }
+    // 出题条数：随机时截断到 n 个；不给就是全取
+    if let Some(n) = f.limit {
+        if f.order.as_deref() == Some("random") {
+            out.truncate(n);
+        }
     }
     if let Some(n) = limit {
         out.truncate(n);
@@ -426,12 +507,12 @@ mod tests {
         open(&p).unwrap()
     }
 
-    /// 手工生成四份样例卷子，供肉眼和 pdftotext 检查。
+    /// 手工生成各类样例卷子，供肉眼和 pdftotext 检查。
     /// cargo test -- --ignored sample_pdfs
     #[test]
     #[ignore]
     fn sample_pdfs() {
-        use crate::pdf::{self, Hint, Kind, Spec};
+        use crate::pdf::{Field, Hint, Mode, Spec};
         let con = seed_conn("samples");
         let f = Filter {
             book_ids: vec!["waiyanshe-required-1".into()],
@@ -441,27 +522,55 @@ mod tests {
         let entries = query(&con, &f, None).unwrap();
         let out = std::path::Path::new("/tmp/samples");
         std::fs::create_dir_all(out).unwrap();
-        for (kind, hint) in [
-            (Kind::Cn2En, None),
-            (Kind::En2Cn, None),
-            (Kind::Table, None),
-            (Kind::Blank, Some(Hint::Zh)),
-            (Kind::Blank, Some(Hint::Initial)),
+
+        let spec = |mode: Mode| Spec {
+            mode,
+            answer_key: true,
+            subtitle: Some("外研社 必修第一册 · UNIT 1".into()),
+            ..Default::default()
+        };
+
+        // 四选 n 的三种典型组合
+        let mut cases: Vec<(String, Spec)> = Vec::new();
+        let mut s = spec(Mode::Columns);
+        s.fields = vec![Field::Meaning, Field::Blank];
+        cases.push(("四选2-中译英".into(), s));
+
+        let mut s = spec(Mode::Columns);
+        s.fields = vec![Field::Word, Field::Phonetic, Field::Blank];
+        cases.push(("四选3-英译中".into(), s));
+
+        let mut s = spec(Mode::Columns);
+        s.fields = vec![Field::Word, Field::Phonetic, Field::Meaning, Field::Blank];
+        cases.push(("四选4-单词表".into(), s));
+
+        // 句子：五种提示
+        for (name, hint) in [
+            ("句子-只挖空", Hint::None),
+            ("句子-中文", Hint::Zh),
+            ("句子-英文", Hint::En),
+            ("句子-音标", Hint::Phonetic),
+            ("句子-首字母", Hint::Initial),
         ] {
-            let spec = Spec {
-                kind,
-                hint,
-                answer_key: true,
-                title: None,
-                subtitle: Some("外研社 必修第一册 · UNIT 1".into()),
-            };
-            let bytes = pdf::render(&entries, &spec).unwrap();
-            let name = match kind {
-                Kind::Cn2En => "cn2en".to_string(),
-                Kind::En2Cn => "en2cn".to_string(),
-                Kind::Table => "table".to_string(),
-                Kind::Blank => format!("blank-{}", format!("{hint:?}").to_lowercase()),
-            };
+            let mut s = spec(Mode::Sentence);
+            s.hint = Some(hint);
+            cases.push((name.into(), s));
+        }
+
+        // 选词填空
+        let mut s = spec(Mode::Cloze);
+        s.pool = Some(8);
+        s.blanks = Some(6);
+        cases.push(("选词填空".into(), s));
+
+        // 笔记模式（多个中文来源 + 例句）
+        let mut s = spec(Mode::Notes);
+        s.sense_sources = vec!["textbook".into(), "oxford_high".into(), "collins".into()];
+        s.example_sources = vec!["oxford".into(), "own".into()];
+        cases.push(("笔记".into(), s));
+
+        for (name, sp) in cases {
+            let bytes = crate::pdf::render(&entries, &sp).unwrap();
             std::fs::write(out.join(format!("{name}.pdf")), bytes).unwrap();
         }
     }

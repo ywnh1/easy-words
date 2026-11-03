@@ -54,11 +54,15 @@ fn export_pdf(
     if entries.is_empty() {
         return Err("筛选结果为空，没有可出的题".into());
     }
-    if spec.kind == pdf::Kind::Blank {
+    // 句子 / 选词填空离不开例句，先剔除没有例句的词条
+    if matches!(spec.mode, pdf::Mode::Sentence | pdf::Mode::Cloze) {
         entries.retain(|e| !e.examples.is_empty());
         if entries.is_empty() {
-            return Err("选中的词都没有例句，无法做句子默写。可以改用其他题型，或缩小范围。".into());
+            return Err("选中的词都没有例句，无法出句子题。可以改用其他题型，或缩小范围。".into());
         }
+    }
+    if spec.mode == pdf::Mode::Columns && spec.fields.is_empty() {
+        return Err("请至少选择一列".into());
     }
     let bytes = pdf::render(&entries, &spec)?;
 
@@ -67,7 +71,7 @@ fn export_pdf(
         _ => default_dir(&app),
     };
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("无法创建目录 {out_dir:?}: {e}"))?;
-    let path = out_dir.join(file_name(spec.kind));
+    let path = out_dir.join(file_name(spec.mode));
     std::fs::write(&path, &bytes).map_err(|e| format!("写入失败 {path:?}: {e}"))?;
 
     Ok(ExportResult {
@@ -102,7 +106,7 @@ fn writable(dir: &std::path::Path) -> bool {
     true
 }
 
-fn file_name(kind: pdf::Kind) -> String {
+fn file_name(mode: pdf::Mode) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -117,11 +121,11 @@ fn file_name(kind: pdf::Kind) -> String {
         ((secs + 8 * 3600) % 86_400) / 3600,
         ((secs + 8 * 3600) % 3600) / 60,
     );
-    let tag = match kind {
-        pdf::Kind::Cn2En => "cn2en",
-        pdf::Kind::En2Cn => "en2cn",
-        pdf::Kind::Table => "wordlist",
-        pdf::Kind::Blank => "blank",
+    let tag = match mode {
+        pdf::Mode::Columns => "columns",
+        pdf::Mode::Sentence => "sentence",
+        pdf::Mode::Cloze => "cloze",
+        pdf::Mode::Notes => "notes",
     };
     format!("easywords-{tag}-{stamp}.pdf")
 }

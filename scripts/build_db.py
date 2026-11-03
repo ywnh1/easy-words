@@ -107,6 +107,14 @@ CREATE TABLE entries (
     UNIQUE (book_id, word, unit_no, source_kind)
 );
 
+CREATE TABLE senses (
+    id       INTEGER PRIMARY KEY,
+    entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
+    source   TEXT NOT NULL,
+    pos      TEXT NOT NULL DEFAULT '',
+    zh       TEXT NOT NULL
+);
+
 CREATE TABLE examples (
     id       INTEGER PRIMARY KEY,
     entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,
@@ -122,8 +130,9 @@ CREATE INDEX idx_entries_initial ON entries(initial);
 CREATE INDEX idx_entries_lower   ON entries(word_lower);
 CREATE INDEX idx_entries_marker  ON entries(marker);
 CREATE INDEX idx_examples_entry  ON examples(entry_id);
+CREATE INDEX idx_senses_entry    ON senses(entry_id);
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 """
 
 # 扫描件里出现过的 marker 别名，统一归一。box 与 bullet 是同一个符号（□）。
@@ -184,6 +193,23 @@ def load_phrase_zh() -> dict[str, tuple[str, str]]:
     return out
 
 
+def load_senses() -> dict[str, list[tuple[str, str, str]]]:
+    """word_lower -> [(source, pos, zh)]，来源顺序即后续优先级参考。"""
+    out: dict[str, list[tuple[str, str, str]]] = {}
+    p = ROOT / "data/senses/senses.tsv"
+    if not p.exists():
+        return out
+    for row in read_tsv(p):
+        if len(row) < 3:
+            continue
+        word, source = row[0].strip().lower(), row[1].strip()
+        pos = row[2].strip() if len(row) > 2 else ""
+        zh = row[3].strip() if len(row) > 3 else ""
+        if word and zh:
+            out.setdefault(word, []).append((source, pos, zh))
+    return out
+
+
 def load_examples() -> dict[str, list[tuple[str, str, str, str]]]:
     """按小写词形索引例句；跨书的同形词共享例句池。"""
     pool: dict[str, list[tuple[str, str, str, str]]] = {}
@@ -201,6 +227,7 @@ def load_examples() -> dict[str, list[tuple[str, str, str, str]]]:
 def main() -> int:
     examples = load_examples()
     phrase_zh = load_phrase_zh()
+    senses = load_senses()
 
     DB.parent.mkdir(parents=True, exist_ok=True)
     if DB.exists():
@@ -257,6 +284,18 @@ def main() -> int:
                 ),
             )
             n_book += 1
+            entry_id = cur.lastrowid
+            # 教材释义作为 textbook 来源，和词典来源一起参与优先级选择
+            if meaning.strip():
+                con.execute(
+                    "INSERT INTO senses(entry_id, source, pos, zh) VALUES(?,?,?,?)",
+                    (entry_id, "textbook", pos.strip(), meaning.strip()),
+                )
+            for src, spos, szh in senses.get(word.strip().lower(), []):
+                con.execute(
+                    "INSERT INTO senses(entry_id, source, pos, zh) VALUES(?,?,?,?)",
+                    (entry_id, src, spos, szh),
+                )
             for en, zh, source, label in examples.get(word.strip().lower(), []):
                 con.execute(
                     "INSERT INTO examples(entry_id, en, zh, source, label) VALUES(?,?,?,?,?)",
@@ -305,6 +344,16 @@ def main() -> int:
                 )
                 if cur.rowcount:
                     n_phrase += 1
+                    if zh:
+                        con.execute(
+                            "INSERT INTO senses(entry_id, source, pos, zh) VALUES(?,?,?,?)",
+                            (cur.lastrowid, "textbook", "", zh),
+                        )
+                    for src, spos, szh in senses.get(phrase.lower(), []):
+                        con.execute(
+                            "INSERT INTO senses(entry_id, source, pos, zh) VALUES(?,?,?,?)",
+                            (cur.lastrowid, src, spos, szh),
+                        )
                     for en, zh, source, label in examples.get(phrase.lower(), []):
                         con.execute(
                             "INSERT INTO examples(entry_id, en, zh, source, label) VALUES(?,?,?,?,?)",
