@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.venv/
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/*.tmp
+*.log
+.DS_Store
+sample.pdf

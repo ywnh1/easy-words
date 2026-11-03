@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: oklch(0.99 0.003 250);
+  --color-panel: oklch(1 0 0);
+  --color-ink: oklch(0.22 0.01 250);
+  --color-muted: oklch(0.55 0.01 250);
+  --color-line: oklch(0.91 0.005 250);
+  --color-accent: oklch(0.55 0.14 255);
+  --color-accent-soft: oklch(0.96 0.02 255);
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-bg: oklch(0.20 0.01 250);
+    --color-panel: oklch(0.24 0.012 250);
+    --color-ink: oklch(0.93 0.005 250);
+    --color-muted: oklch(0.66 0.01 250);
+    --color-line: oklch(0.32 0.012 250);
+    --color-accent: oklch(0.72 0.12 255);
+    --color-accent-soft: oklch(0.30 0.04 255);
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: system-ui, -apple-system, "Noto Sans SC", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* 移动端点击不要有高亮块 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer utilities {
+  .thin-scroll {
+    scrollbar-width: thin;
+  }
+}

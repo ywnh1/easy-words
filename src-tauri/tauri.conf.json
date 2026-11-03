@@ -1,0 +1,44 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Easy Words",
+  "version": "0.1.0",
+  "identifier": "com.ywnh1.easywords",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Easy Words",
+        "width": 1120,
+        "height": 800,
+        "minWidth": 720,
+        "minHeight": 560,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "minSdkVersion": 24
+    },
+    "shortDescription": "外研社高中英语词汇出题器",
+    "longDescription": "按书/单元/页码/首字母/词性标记筛选词汇，生成中译英、英译中、单词表、句子默写四种 PDF。"
+  },
+  "plugins": {}
+}
