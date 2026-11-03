@@ -92,7 +92,7 @@ pub enum Hint {
     Initial,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 pub struct Spec {
     pub mode: Mode,
     /// Columns：表格列，顺序即显示顺序
@@ -1235,6 +1235,193 @@ mod tests {
         assert!(!has_answer(&no_blank));
         // 笔记模式永远没有答案
         assert!(!has_answer(&base(Mode::Notes)));
+    }
+
+    /// 从生成的 PDF 字节里数页数。
+    ///
+    /// 答案规则的验收点就在这里：TODO 要求「四选 n 只有含默写列才出答案」、
+    /// 「笔记模式没有答案」。只看 has_answer 这个布尔不够 —— 得确认 PDF
+    /// 真的没多出一页。用 lopdf（printpdf 的底座）读回页数最直接。
+    fn page_count(bytes: &[u8]) -> usize {
+        let doc = printpdf::lopdf::Document::load_mem(bytes).expect("PDF 应能读回");
+        doc.get_pages().len()
+    }
+
+    fn entry_with_example(word: &str, meaning: &str, phonetic: &str, ex: &str) -> EntryView {
+        e(word, meaning, phonetic, ex)
+    }
+
+    #[test]
+    fn notes_never_emit_answer_page() {
+        let entries = vec![
+            entry_with_example("mood", "心情", "/muːd/", "Her mood improved at once."),
+            entry_with_example("smile", "微笑", "/smaɪl/", "She was smiling at me."),
+        ];
+        let mut spec = base(Mode::Notes);
+        spec.answer_key = true; // 即便前端勾了，笔记模式也不该出答案页
+        let alone = page_count(&render(&entries, &spec).unwrap());
+
+        spec.answer_key = false;
+        let without = page_count(&render(&entries, &spec).unwrap());
+
+        assert_eq!(alone, without, "笔记模式不该因为 answer_key 多出一页");
+    }
+
+    #[test]
+    fn columns_answer_page_only_with_blank_field() {
+        let entries = vec![entry_with_example(
+            "mood",
+            "心情",
+            "/muːd/",
+            "Her mood improved at once.",
+        )];
+
+        // 无默写列：不应有答案页
+        let no_blank = Spec {
+            fields: vec![Field::Word, Field::Meaning],
+            answer_key: true,
+            ..base(Mode::Columns)
+        };
+        let a = page_count(&render(&entries, &no_blank).unwrap());
+
+        let no_blank_no_key = Spec {
+            answer_key: false,
+            ..no_blank.clone()
+        };
+        let b = page_count(&render(&entries, &no_blank_no_key).unwrap());
+        assert_eq!(a, b, "没有默写列时不该生成答案页");
+
+        // 有默写列：必须多出答案页
+        let with_blank = Spec {
+            fields: vec![Field::Word, Field::Meaning, Field::Blank],
+            answer_key: true,
+            ..base(Mode::Columns)
+        };
+        let c = page_count(&render(&entries, &with_blank).unwrap());
+        assert_eq!(c, a + 1, "有默写列且勾选答案时应恰好多一页");
+    }
+
+    #[test]
+    fn sentence_and_cloze_always_have_answer_page() {
+        let entries = vec![
+            entry_with_example("mood", "心情", "/muːd/", "Her mood improved at once."),
+            entry_with_example("smile", "微笑", "/smaɪl/", "She was smiling at me."),
+            entry_with_example("campus", "校园", "/ˈkæmpəs/", "The campus is very large."),
+        ];
+        for mode in [Mode::Sentence, Mode::Cloze] {
+            let mut on = base(mode);
+            on.answer_key = true;
+            if mode == Mode::Cloze {
+                on.pool = Some(3);
+                on.blanks = Some(2);
+            }
+            let mut off = on.clone();
+            off.answer_key = false;
+            let with = page_count(&render(&entries, &on).unwrap());
+            let without = page_count(&render(&entries, &off).unwrap());
+            assert!(with > without, "{mode:?} 勾选答案后应多出页面");
+        }
+    }
+
+    /// 列顺序必须真的影响输出：同样的列换个顺序，PDF 内容不该一样。
+    #[test]
+    fn column_order_changes_output() {
+        let entries = vec![entry_with_example(
+            "mood",
+            "心情",
+            "/muːd/",
+            "Her mood improved at once.",
+        )];
+        let a = Spec {
+            fields: vec![Field::Meaning, Field::Blank],
+            answer_key: false,
+            ..base(Mode::Columns)
+        };
+        let b = Spec {
+            fields: vec![Field::Blank, Field::Meaning],
+            ..a.clone()
+        };
+        let pa = render(&entries, &a).unwrap();
+        let pb = render(&entries, &b).unwrap();
+        assert_ne!(pa, pb, "调换列顺序后版面应发生变化");
+    }
+
+    /// 选词填空的数量关系：方框里 N+M 个选项，下面 N 个句子，
+    /// 且每个句子考的词一定在选项里（否则这题无解）。
+    #[test]
+    fn cloze_pool_and_subset() {
+        let entries: Vec<EntryView> = (0..10)
+            .map(|i| {
+                entry_with_example(
+                    &format!("word{i}"),
+                    "释义",
+                    "/wɜːd/",
+                    &format!("This is word{i} in a sentence."),
+                )
+            })
+            .collect();
+
+        for (pool, blanks) in [(8, 6), (5, 5), (4, 1), (10, 3)] {
+            let spec = Spec {
+                mode: Mode::Cloze,
+                pool: Some(pool),
+                blanks: Some(blanks),
+                answer_key: false,
+                ..Default::default()
+            };
+            let (options, items) = pick_cloze(&entries, &spec);
+            assert_eq!(options.len(), pool, "选项数应为 pool");
+            assert_eq!(items.len(), blanks, "句子数应为 blanks");
+            // 每题考的词必须出现在选项里
+            for i in &items {
+                assert!(
+                    options.contains(i),
+                    "第 {i} 条是题目但不在选项里：{options:?}"
+                );
+            }
+            // 选项不能有重复
+            let uniq: std::collections::HashSet<_> = options.iter().collect();
+            assert_eq!(uniq.len(), options.len(), "选项有重复");
+        }
+    }
+
+    /// 没有例句的词不能进选词填空（否则出不了题）。
+    #[test]
+    fn cloze_skips_entries_without_examples() {
+        let entries = vec![
+            entry_with_example("mood", "心情", "/muːd/", ""),   // 无例句
+            entry_with_example("smile", "微笑", "/smaɪl/", "She was smiling at me."),
+            entry_with_example("campus", "校园", "/ˈkæmpəs/", "The campus is large."),
+        ];
+        let spec = Spec {
+            mode: Mode::Cloze,
+            pool: Some(3),
+            blanks: Some(2),
+            ..Default::default()
+        };
+        let (options, items) = pick_cloze(&entries, &spec);
+        assert!(!options.contains(&0), "无例句的条目不该出现在选项里");
+        assert!(!items.contains(&0), "无例句的条目不该成为题目");
+        assert_eq!(options.len(), 2);
+        assert_eq!(items.len(), 2);
+    }
+
+    /// 笔记模式要把勾选的来源都列出来，并带上来源名。
+    #[test]
+    fn notes_lists_all_selected_sources() {
+        let item = e("mood", "心情", "/muːd/", "Her mood improved.");
+        let got = pick_zh_all(
+            &item,
+            &["textbook".into(), "oxford_high".into(), "collins".into()],
+        );
+        let sources: Vec<&str> = got.iter().map(|(s, _)| s.as_str()).collect();
+        assert!(sources.contains(&"textbook"), "{sources:?}");
+        assert!(sources.contains(&"oxford_high"), "{sources:?}");
+        // 教材释义与词典释义都要出现，而不是只留一个
+        assert!(got.len() >= 2, "应列出多个来源：{got:?}");
+        // 来源名可读
+        assert_eq!(SOURCE_LABEL("oxford_high"), "牛津高阶");
+        assert_eq!(SOURCE_LABEL("collins"), "柯林斯");
     }
 
     #[test]

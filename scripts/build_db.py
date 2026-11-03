@@ -194,18 +194,28 @@ def load_phrase_zh() -> dict[str, tuple[str, str]]:
 
 
 def load_senses() -> dict[str, list[tuple[str, str, str]]]:
-    """word_lower -> [(source, pos, zh)]，来源顺序即后续优先级参考。"""
+    """word_lower -> [(source, pos, zh)]。
+
+    扫 data/senses/ 下所有 TSV，所以新增来源只要丢一个文件进来：
+      senses.tsv       词典抽取（牛津高阶 / 柯林斯 / 牛津双解）
+      ai.tsv           AI 翻译，格式同行，source 填 ai
+    同一个 (word, source, zh) 会去重，重复导入不会翻倍。
+    """
     out: dict[str, list[tuple[str, str, str]]] = {}
-    p = ROOT / "data/senses/senses.tsv"
-    if not p.exists():
-        return out
-    for row in read_tsv(p):
-        if len(row) < 3:
-            continue
-        word, source = row[0].strip().lower(), row[1].strip()
-        pos = row[2].strip() if len(row) > 2 else ""
-        zh = row[3].strip() if len(row) > 3 else ""
-        if word and zh:
+    seen: set[tuple[str, str, str]] = set()
+    for p in sorted((ROOT / "data/senses").glob("*.tsv")):
+        for row in read_tsv(p):
+            if len(row) < 4:
+                continue
+            word, source = row[0].strip().lower(), row[1].strip()
+            pos = row[2].strip()
+            zh = row[3].strip()
+            if not (word and source and zh):
+                continue
+            key = (word, source, zh)
+            if key in seen:
+                continue
+            seen.add(key)
             out.setdefault(word, []).append((source, pos, zh))
     return out
 

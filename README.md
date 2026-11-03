@@ -28,8 +28,16 @@
 2. 牛津高阶（英汉双解，`<defT><chn>` 里的释义）
 3. 柯林斯 COBUILD
 4. 牛津高阶英汉双解词典 —— 实际是同义词/反查词典，噪声较大，默认不启用
-5. AI 翻译 —— **空占位**：还没有接任何服务，勾选也会被跳过、回退到下一个来源。
-   要真正启用需要指定服务商与密钥。
+5. AI 翻译 —— 数据入口已就绪，内容待填。`data/senses/ai.tsv` 放译文即生效：
+
+   ```sh
+   python3 scripts/ai_translate.py --stats        # 看还缺多少
+   python3 scripts/ai_translate.py --dry-run      # 列出待译词条
+   python3 scripts/ai_translate.py --import X.tsv # 把外部译文并进来
+   python3 scripts/build_db.py                    # 重新入库
+   ```
+
+   这个脚本只做格式与合并，不调用任何模型 —— 译文得由你或你指定的服务产出。
 
 「笔记模式」会把勾选的所有来源并列出来，每条都标来源。
 
@@ -92,7 +100,8 @@ pnpm preview:verify  # 用 jsdom 真跑一遍，确认能渲染、按钮能点
 - `data/phrases/<book_id>.tsv` —— 扩充短语，3 列：`unit phrase note`
 - `data/examples/examples.tsv` —— 例句，5 列：`word unit en zh source`
 - `data/phrases/zh-oxford.tsv`、`zh-own.tsv` —— 扩充短语中文释义，3 列：`phrase zh source`
-- `data/senses/senses.tsv` —— 各词典抽出的中文释义，4 列：`word source pos zh`
+- `data/senses/*.tsv` —— 各来源的中文释义，4 列：`word source pos zh`。
+  `senses.tsv` 是词典抽取，`ai.tsv` 是 AI 翻译；目录下新增文件会被自动收进来（同一来源同一释义会去重）。
 
 重新生成例句与词典释义（要扫 mdict 词典，各约 2–5 分钟）：
 
