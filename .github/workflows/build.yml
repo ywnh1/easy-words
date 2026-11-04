@@ -101,7 +101,7 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -114,10 +114,19 @@ jobs:
         with:
           workspaces: src-tauri
 
-      - uses: android-actions/setup-android@v3
-
-      - name: NDK
+      # 不用 android-actions/setup-android：它用 Node 20 写成，现在被强制跑在
+      # Node 24 上，内部的 sdkmanager --licenses 会退出码 1 而整步失败。
+      # runner 镜像本来就预装了 SDK 与 NDK，直接把环境变量接上即可。
+      - name: 检查预装的 Android SDK / NDK
         run: |
+          set -e
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+          echo "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME:-}"
+          test -d "${ANDROID_HOME:-/nonexistent}" || { echo "缺少 ANDROID_HOME"; exit 1; }
+          test -n "${ANDROID_NDK_LATEST_HOME:-}" && test -d "$ANDROID_NDK_LATEST_HOME" \
+            || { echo "缺少 NDK"; exit 1; }
+          ls "$ANDROID_HOME/platforms" | tail -3
           echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
           echo "NDK_PATH=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
 
@@ -136,8 +145,15 @@ jobs:
           EOF
           cat src-tauri/gen/android/keystore.properties
 
+      # Tauri 的 gradle 模板不含 signingConfigs，光有 keystore.properties
+      # 没人读，release APK 会是未签名的。这一步把它接上。
+      - name: 注入 release 签名配置
+        run: node scripts/patch-android-signing.mjs src-tauri/gen/android
+
       - name: 构建 APK
-        run: pnpm tauri android build --apk --ci
+        # 只打 arm64：覆盖绝大多数真机，x86_64 只有模拟器用得上，
+        # 四个 ABI 全打会让 CI 时长翻好几倍
+        run: pnpm tauri android build --apk --ci --target aarch64
 
       - uses: actions/upload-artifact@v4
         with:
