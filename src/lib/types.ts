@@ -82,7 +82,17 @@ export type Spec = {
 /** 导出格式 */
 export type Format = "pdf" | "docx";
 
-export type ExportResult = { path: string; count: number };
+export type ExportResult = {
+  /** 完整路径（桌面用来打开文件）；Android 上是 content:// URI */
+  path: string;
+  /** 给用户看的短路径，Android 上是「Download/Easy Words/xxx.pdf」 */
+  display_path: string;
+  /** Android 分享用的 content:// URI；桌面为空 */
+  uri: string;
+  count: number;
+  file_name: string;
+  size: number;
+};
 
 export const FORMAT_LABEL: Record<Format, string> = {
   pdf: "PDF",

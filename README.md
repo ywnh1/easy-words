@@ -80,6 +80,22 @@ Tailwind 只留作布局与少量微调：`src/index.css` 开头声明了
 `@layer mantine, theme, base, components, utilities`，让 Tailwind 的工具类能覆盖
 Mantine 的默认样式；Mantine 侧用 `styles.layer.css`。
 
+### 导出后的分享（Android）
+
+Android 10+ 有 scoped storage，应用不能直接往公共下载目录写；写到 app 私有目录
+用户又根本找不到（大部分人不用文件管理器）。所以：
+
+- Rust 侧先写进应用缓存，再交给本地插件 `src-tauri/plugins/save-share`，
+  它用 **MediaStore** 落到 `Download/Easy Words/`，这是系统认可的正路。
+- 导出成功后**不再自动打开文件**，而是弹一个「已生成」对话框：
+  显示文件名、题量、大小、保存位置，主按钮是**分享 / 用其它应用打开**。
+  系统分享面板里就有 WPS、微信、QQ 等，一条 ACTION_SEND 就能覆盖。
+- 「直接打开」走 ACTION_VIEW + content:// URI，同样由插件处理 ——
+  opener 插件只认普通路径，处理不了 content URI。
+
+插件需要在 `tauri android init` 之后挂进 Gradle 工程（本地 path 插件
+Tauri 不会自动注册），由 `scripts/link-android-plugins.py` 完成。
+
 ### 移动端优先的取舍
 
 这个应用主要在手机上用，所以：
@@ -219,4 +235,6 @@ src-tauri/       Rust：
   assets/fonts/  子集字体
   icons/         npx tauri icon 生成的全套图标（含 android/mipmap-*）
   keystore/      Android 签名
+  plugins/
+    save-share/  本地 Tauri 插件：MediaStore 保存 + 系统分享/打开
 ```

@@ -119,7 +119,7 @@ if (!(await clickText("开始出题"))) {
   problems.push("点不开「开始出题」");
 } else {
   const t1 = bodyText();
-  expect(t1.includes("选择范围"), "向导第一步不是「选择范围」");
+  expect(t1.includes("选词范围"), "向导第一步不是「选词范围」");
   expect(t1.includes("必修第一册"), "第一步没有列出教材");
   expect(t1.includes("必填"), "第一步没有必填标记");
 

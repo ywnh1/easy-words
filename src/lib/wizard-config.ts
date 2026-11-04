@@ -2,12 +2,16 @@
 
 export type StepId = "scope" | "order" | "mode" | "detail" | "export";
 
+/**
+ * 五步的标签。手机上顶栏只显示当前步，所以 hint 会作为副标题出现，
+ * 写短一点。
+ */
 export const STEPS: { id: StepId; title: string; hint: string }[] = [
-  { id: "scope", title: "选择范围", hint: "从哪些词里出题" },
-  { id: "order", title: "排列与数量", hint: "题的先后与抽多少" },
-  { id: "mode", title: "选择题型", hint: "这份卷子长什么样" },
-  { id: "detail", title: "题型细节", hint: "这一型的具体设置" },
-  { id: "export", title: "中文与导出", hint: "释义来源和卷面信息" },
+  { id: "scope", title: "选词范围", hint: "从哪几本书、哪些单元出" },
+  { id: "order", title: "顺序与数量", hint: "要多少题、怎么排" },
+  { id: "mode", title: "卷子类型", hint: "出成什么形式" },
+  { id: "detail", title: "题型设置", hint: "这一型的具体选项" },
+  { id: "export", title: "导出", hint: "格式、释义与预览" },
 ];
 
 export const HELP = {

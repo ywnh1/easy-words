@@ -143,3 +143,21 @@ export async function openPath(path: string): Promise<void> {
   if (!inTauri) return;
   return tauriOpenPath(path);
 }
+
+/** 调起系统分享面板（Android）。桌面端会返回不支持的错误。 */
+export async function shareFile(uri: string, format: Format): Promise<void> {
+  if (!inTauri) {
+    throw new Error("这是纯前端预览版，没有系统分享能力。");
+  }
+  return invoke<void>("share_file", { uri, format });
+}
+
+/** Android 上用系统默认应用打开导出的文件（content:// URI） */
+export async function openExported(uri: string, format: Format): Promise<void> {
+  if (!inTauri) throw new Error("这是纯前端预览版，没有系统能力。");
+  return invoke<void>("open_exported", { uri, format });
+}
+
+/** 是否跑在 Android 上，用来决定要不要显示「分享」按钮 */
+export const isAndroid =
+  typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);

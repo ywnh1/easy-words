@@ -5,11 +5,12 @@
  * filter / spec 由这些状态派生，预览和导出共用同一份，避免两边口径不一致。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { catalog, countEntries, exportDocument, openPath, preview as fetchPreview } from "../lib/api";
+import { catalog, countEntries, exportDocument, preview as fetchPreview } from "../lib/api";
 import type {
   BookInfo,
   EntryView,
   Field,
+  ExportResult,
   Filter,
   Format,
   Hint,
@@ -87,6 +88,8 @@ export function useQuiz() {
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** 导出成功后的结果，用来弹「已保存 / 分享」对话框 */
+  const [exported, setExported] = useState<ExportResult | null>(null);
 
   useEffect(() => {
     catalog()
@@ -201,17 +204,17 @@ export function useQuiz() {
     ],
   );
 
+  const clearExport = useCallback(() => setExported(null), []);
+
   const doExport = useCallback(async () => {
     setBusy(true);
     setMsg(null);
     try {
       const res = await exportDocument(filter, spec, format);
-      setMsg({ ok: true, text: `已生成 ${res.count} 题 → ${res.path}` });
-      try {
-        await openPath(res.path);
-      } catch {
-        /* 打开失败不影响导出 */
-      }
+      // 不再自动打开文件：手机上打开 PDF 会切走应用，
+      // 也没告诉用户文件在哪。改成弹窗，让用户自己选分享还是打开。
+      setExported(res);
+      setMsg(null);
       return true;
     } catch (e) {
       setMsg({ ok: false, text: String(e) });
@@ -286,6 +289,9 @@ export function useQuiz() {
     busy,
     msg,
     setMsg,
+    exported,
+    setExported,
+    clearExport,
     doExport,
   };
 }

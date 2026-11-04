@@ -1,0 +1,19 @@
+[package]
+name = "tauri-plugin-save-share"
+version = "0.1.0"
+description = "把导出的文件写到系统下载目录，并调起分享"
+edition = "2021"
+rust-version = "1.77"
+# tauri-plugin 的 build script 要求 links 与包名一致
+links = "tauri-plugin-save-share"
+
+[lib]
+name = "tauri_plugin_save_share"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }

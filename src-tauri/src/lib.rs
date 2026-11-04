@@ -6,6 +6,7 @@ mod pdf;
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::{Manager, State};
+use tauri_plugin_save_share::{SaveFileArgs, SaveShareExt};
 
 struct AppState {
     db_path: PathBuf,
@@ -13,8 +14,15 @@ struct AppState {
 
 #[derive(Serialize)]
 pub struct ExportResult {
+    /// 完整路径（桌面用来打开文件）
     pub path: String,
+    /// 给用户看的短路径，Android 上是「Download/Easy Words/xxx.pdf」
+    pub display_path: String,
+    /// Android 分享用的 content:// URI；桌面为空
+    pub uri: String,
     pub count: usize,
+    pub file_name: String,
+    pub size: u64,
 }
 
 #[tauri::command]
@@ -75,18 +83,111 @@ fn export_document(
         pdf::render(&entries, &spec)?
     };
 
-    let out_dir = match dir {
-        Some(d) if !d.trim().is_empty() => PathBuf::from(d),
-        _ => default_dir(&app),
-    };
-    std::fs::create_dir_all(&out_dir).map_err(|e| format!("无法创建目录 {out_dir:?}: {e}"))?;
-    let path = out_dir.join(file_name(spec.mode, docx));
-    std::fs::write(&path, &bytes).map_err(|e| format!("写入失败 {path:?}: {e}"))?;
+    let name = file_name(spec.mode, docx);
+    let size = bytes.len() as u64;
+    let count = entries.len();
 
-    Ok(ExportResult {
-        path: path.to_string_lossy().to_string(),
-        count: entries.len(),
-    })
+    // Android：先写进应用沙盒，再交给 MediaStore 落到公共下载目录。
+    // 直接写公共路径在 Android 10+ 会被 scoped storage 拒绝。
+    #[cfg(target_os = "android")]
+    {
+        let _ = &dir;
+        let tmp_dir = app
+            .path()
+            .app_cache_dir()
+            .map_err(|e| format!("取缓存目录失败：{e}"))?;
+        std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("建缓存目录失败：{e}"))?;
+        let tmp = tmp_dir.join(&name);
+        std::fs::write(&tmp, &bytes).map_err(|e| format!("写入临时文件失败：{e}"))?;
+
+        let saved = app.save_share().save_file(SaveFileArgs {
+            path: tmp.to_string_lossy().to_string(),
+            file_name: name.clone(),
+            mime: mime_of(docx).into(),
+        })?;
+        // 临时文件用完就删，公共目录那份才是给用户的
+        let _ = std::fs::remove_file(&tmp);
+
+        return Ok(ExportResult {
+            path: saved.uri.clone(),
+            display_path: saved.display_path,
+            uri: saved.uri,
+            count,
+            file_name: name,
+            size,
+        });
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let out_dir = match dir {
+            Some(d) if !d.trim().is_empty() => PathBuf::from(d),
+            _ => default_dir(&app),
+        };
+        std::fs::create_dir_all(&out_dir).map_err(|e| format!("无法创建目录 {out_dir:?}: {e}"))?;
+        let path = out_dir.join(&name);
+        std::fs::write(&path, &bytes).map_err(|e| format!("写入失败 {path:?}: {e}"))?;
+
+        let display = path.to_string_lossy().to_string();
+        Ok(ExportResult {
+            path: display.clone(),
+            display_path: display,
+            uri: String::new(),
+            count,
+            file_name: name,
+            size,
+        })
+    }
+}
+
+fn mime_of(docx: bool) -> &'static str {
+    if docx {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    } else {
+        "application/pdf"
+    }
+}
+
+/// 用系统默认应用打开导出的文件（Android 上走 content:// URI）。
+#[tauri::command]
+fn open_exported(
+    app: tauri::AppHandle,
+    uri: String,
+    format: Option<String>,
+) -> Result<(), String> {
+    let docx = format.as_deref() == Some("docx");
+    #[cfg(target_os = "android")]
+    {
+        app.save_share().open(uri, mime_of(docx).into())
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, uri);
+        Err("桌面端请用「打开文件」按钮".into())
+    }
+}
+
+/// 调起系统分享面板。只有 Android 有这一套，其它平台返回不支持。
+#[tauri::command]
+fn share_file(
+    app: tauri::AppHandle,
+    uri: String,
+    format: Option<String>,
+) -> Result<(), String> {
+    let docx = format.as_deref() == Some("docx");
+    #[cfg(target_os = "android")]
+    {
+        app.save_share().share(tauri_plugin_save_share::ShareArgs {
+            uri,
+            mime: mime_of(docx).into(),
+            title: Some("分享试卷".into()),
+        })
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, uri);
+        Err("桌面端请直接用「打开文件」".into())
+    }
 }
 
 fn default_dir(app: &tauri::AppHandle) -> PathBuf {
@@ -144,6 +245,7 @@ fn file_name(mode: content::Mode, docx: bool) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_save_share::init())
         .setup(|app| {
             let path = app
                 .path()
@@ -158,7 +260,9 @@ pub fn run() {
             catalog,
             preview,
             count_entries,
-            export_document
+            export_document,
+            share_file,
+            open_exported
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

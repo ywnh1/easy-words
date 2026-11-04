@@ -15,7 +15,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--mantine-color-body);
+  /* 页面底色用浅灰，白卡浮在上面 —— 纯白页面会让所有按钮都糊成一片 */
+  background: light-dark(var(--mantine-color-slate-0), var(--mantine-color-dark-8));
   color: var(--mantine-color-text);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
@@ -48,6 +49,11 @@ body {
 .safe-x {
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+}
+
+/* 顶栏和底栏跟页面同色，与白卡形成对比；加一层细分割线当边界 */
+.chrome {
+  background: light-dark(var(--mantine-color-slate-0), var(--mantine-color-dark-8));
 }
 
 /* 底部固定操作栏：内容区要留出同样高度的空白，否则最后一项被盖住 */

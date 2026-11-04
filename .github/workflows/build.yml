@@ -159,6 +159,11 @@ jobs:
 
       # Tauri 的 gradle 模板不含 signingConfigs，光有 keystore.properties
       # 没人读，release APK 会是未签名的。这一步把它接上。
+      # 本地 path 插件不会被 Tauri 自动挂进 Gradle 工程，
+      # 必须在 init 之后手动 include，否则 Kotlin 侧的 SaveSharePlugin 找不到
+      - name: 挂载本地 Android 插件
+        run: python3 scripts/link-android-plugins.py src-tauri/gen/android
+
       - name: 注入 release 签名配置
         run: node scripts/patch-android-signing.mjs src-tauri/gen/android
 

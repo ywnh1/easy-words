@@ -7,7 +7,6 @@ import {
   Container,
   Group,
   Paper,
-  Progress,
   Stack,
   Text,
   Title,
@@ -15,6 +14,7 @@ import {
 import { ArrowLeft, ArrowRight, House, Warning } from "@phosphor-icons/react";
 import { STEPS } from "../lib/wizard-config";
 import { useQuiz } from "../state/useQuiz";
+import { ExportDone } from "./ExportDone";
 import { DetailStep } from "./steps/DetailStep";
 import { ExportStep } from "./steps/ExportStep";
 import { ModeStep } from "./steps/ModeStep";
@@ -78,16 +78,50 @@ export function Wizard({ onExit }: { onExit: () => void }) {
             {active === 0 ? <House size={22} /> : <ArrowLeft size={22} />}
           </ActionIcon>
 
-          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
             <Text size="sm" fw={600} truncate>
               {step.title}
             </Text>
-            <Progress
-              value={((active + 1) / STEPS.length) * 100}
-              size={4}
-              radius="xl"
-              aria-label={`第 ${active + 1} 步，共 ${STEPS.length} 步`}
-            />
+            {/* 五段进度：点任意一段可以直接跳过去（前提是前面的必填项已满足） */}
+            <Group gap={4} wrap="nowrap">
+              {STEPS.map((s, i) => {
+                const reachable = stepValid.slice(0, i).every(Boolean);
+                return (
+                  <Box
+                    key={s.id}
+                    component="button"
+                    type="button"
+                    onClick={() => reachable && go(i)}
+                    aria-label={`跳到${s.title}`}
+                    aria-current={i === active}
+                    disabled={!reachable}
+                    style={{
+                      flex: 1,
+                      height: 20,
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
+                      cursor: reachable ? "pointer" : "default",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Box
+                      style={{
+                        width: "100%",
+                        height: 4,
+                        borderRadius: 2,
+                        background:
+                          i <= active
+                            ? "var(--mantine-color-brand-6)"
+                            : "var(--mantine-color-slate-3)",
+                        opacity: reachable ? 1 : 0.5,
+                      }}
+                    />
+                  </Box>
+                );
+              })}
+            </Group>
           </Stack>
 
           <Text
@@ -132,6 +166,12 @@ export function Wizard({ onExit }: { onExit: () => void }) {
           </Paper>
         </Stack>
       </Box>
+
+      <ExportDone
+        result={quiz.exported}
+        format={quiz.format}
+        onClose={quiz.clearExport}
+      />
 
       {/* 底部固定操作栏 */}
       <Box
