@@ -47,8 +47,11 @@ class SaveSharePlugin(private val activity: Activity) : Plugin(activity) {
     /** 子目录名，和桌面端保持一致 */
     private val folder = "Easy Words"
 
+    // 方法名就是注册给 Rust 的命令名，必须和 Rust 侧的字符串一致。
+    // Rust 用的是 snake_case，所以这里也用 snake_case；
+    // 写成 saveFile 会让 run_mobile_plugin("save_file") 找不到命令。
     @Command
-    fun saveFile(invoke: Invoke) {
+    fun save_file(invoke: Invoke) {
         try {
             val args = invoke.parseArgs(SaveFileArgs::class.java)
             val src = File(args.path)

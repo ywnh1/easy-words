@@ -135,5 +135,157 @@ Bug 修复 = 根因，而不是症状：报告命名的是症状。Grep 你改�
 # 仓库说明
 > 说明这个仓库是干什么的，但是我很懒，所以有的时候不会写，这是空着的
 
+<!-- ==================== 以下由 AI 维护 ==================== -->
+
+## 这是什么
+
+**Easy Words** —— 外研社高中英语词汇出题器。按书/单元/页码/首字母/词标记筛选词条，
+生成 PDF 或 Word 练习卷。Tauri v2 桌面（Windows）与 Android 双端，界面为单文件预览版也可在浏览器打开。
+
+不是「背单词 App」，是**出卷工具**：做完的题在纸上，屏幕上不做题、不批改、不记录成绩。
+
+上游仓库：https://github.com/ywnh1/easy-words （MIT）
+
+## 技术栈与选型理由
+
+| 层 | 选了什么 | 为什么 |
+| --- | --- | --- |
+| 外壳 | Tauri v2 | 比 Electron 小一个数量级；Android 也支持 |
+| 界面 | React 19 + **Radix Themes v3** | 自带完整设计系统，不依赖 CSS 框架 |
+| 图标 | Phosphor | 不用 emoji / 字符箭头（跨系统字重与宽度不一致，是错位的来源） |
+| 查询 | SQLite（rusqlite bundled） | 不把整库读进内存；加新书不改 schema |
+| PDF | printpdf 0.7（直接画坐标） | Typst 当库有 200+ 依赖、Android 交叉编译风险高 |
+| Word | docx-rs 0.4 | 生成真表格与段落，用户能自己改题 |
+
+**不要重新引入 Tailwind。** 之前用过，全项目只用到 4 个自定义类，一个工具类都没用；
+它的 preflight 却把组件库的按钮背景、Checkbox 方框、Dialog 定位全重置了 ——
+表现为「按钮全白」「勾选框消失」「弹窗跑到屏幕外」「点击导出像没反应」。删掉是修复，不是省略。
+
+## 目录
+
+```
+data/            词库源文件（TSV，唯一的输入）
+  books/           教材词表   unit page word phonetic pos meaning marker
+  phrases/         Learning aid 扩充短语 + 中文释义
+  senses/          各词典抽取的释义（可放 ai.tsv 接 AI 翻译）
+  examples/        例句
+scripts/         数据流水线（Python）与前端构建辅助
+src/             React 界面
+  components/steps/  向导五步，每步一个文件
+  state/useQuiz.ts   全部配置状态的唯一来源
+src-tauri/src/   Rust
+  content.rs     与输出格式无关的卷面逻辑（选释义/挖空/答案规则）← PDF 与 Word 共用
+  pdf.rs         画坐标
+  docx.rs        流式文档 + 表格
+  db.rs          查询
+src-tauri/plugins/save-share/  本地插件：MediaStore 保存 + 系统分享
+```
+
+## 数据流水线
+
+TSV 是唯一事实来源，SQLite 是编译产物（`src-tauri/resources/seed.sqlite`，随二进制内嵌）。
+
+```sh
+python3 scripts/build_db.py        # TSV → seed.sqlite
+python3 scripts/extract_examples.py # 扫 mdict 词典抽例句（约 2 分钟）
+python3 scripts/extract_senses.py   # 抽中文释义（约 5 分钟）
+python3 scripts/make_fonts.py       # 生成 PDF 用的字体子集
+```
+
+**加一本新书**：在 `build_db.py` 的 `BOOKS` 加一条 + 放一个 `data/books/<id>.tsv`，
+再跑一次 `build_db.py`。schema 与查询代码都不用动。
+
+## 容易踩的坑（都踩过）
+
+**字体**：Noto Sans CJK 是 OTF/CFF 轮廓，printpdf 写出后字形会错位（文本层正确、
+页面是乱码汉字）。改用 Droid（TrueType，只有汉字）+ DejaVu（拉丁与 IPA）。
+Droid 不含拉丁字母，所以必须两套并用，`pdf.rs` 里按字符分派字体。
+
+**词标记**：教材只有两种前置符号 —— `•` 小圆点（与加星同级，存 `star`）
+和 `□` 空心方框（选择性必修词，存 `box`）。
+事实：**只有必修 1/2/3 有方框词，选择性必修一没有**。
+早先把 `•` 当成方框，让选必一凭空多出 12 条方框词。
+`marker_facts_match_textbooks` 这个测试就是盯这个事实的。
+
+**本地插件命令名**：Tauri 在 Android 上按 **Kotlin 方法名** 分发命令。
+`run_mobile_plugin("save_file")` 必须对应 `fun save_file(...)`；
+写成 `fun saveFile(...)` 会报 `No command save_file found`，而桌面上完全测不出来
+（那段代码在 `#[cfg(target_os = "android")]` 里）。
+改完跑 `python3 scripts/check-plugin-commands.py`。
+
+**Android 存储**：scoped storage 不允许直接写公共 Download。
+API 29+ 走 MediaStore，API 24-28 走外部存储目录 + MediaScanner（`MediaStore.Downloads` 在旧版本不存在，直接引用会崩）。
+
+**Android 构建**：本机可以验证，不用等 CI：
+
+```sh
+cd src-tauri
+NDK=$HOME/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin
+export CC_aarch64_linux_android=$NDK/aarch64-linux-android24-clang
+export AR_aarch64_linux_android=$NDK/llvm-ar
+cargo check --target aarch64-linux-android
+```
+
+**生成的 Android 工程会重置**：`tauri android init` 每次都重新生成 `gen/android`。
+所以图标注入、签名注入、本地插件挂载都写成脚本，在 CI 里 init 之后跑：
+`patch-android-signing.mjs`、`link-android-plugins.py`。
+
+## 验证方式
+
+```sh
+cargo test                                  # Rust：查询 + 四种卷面 + 答案规则
+pnpm typecheck                              # tsc --noEmit
+node scripts/verify_preview.mjs             # jsdom 真跑一遍界面，点按钮走完五步
+```
+
+`cargo test` 里有几个命令行的测试值得知道：
+
+```sh
+cargo test -- --ignored sample_pdfs        # 生成样例 PDF 到 /tmp/samples
+cargo test -- --ignored sample_docx        # 生成样例 Word 到 /tmp/samples-docx
+cargo test -- --ignored full_export --nocapture   # 全量 1580 条的耗时
+```
+
+`verify_preview` 会检查：渲染非空、文案存在、无外部资源请求、无运行时错误，
+以及点得动（切步骤、开弹窗、必填校验、回退）。
+它**不能**判断视觉好坏 —— 间距、字重、颜色对比只能人看。
+
+## 预览版（不装客户端也能看界面）
+
+```sh
+pnpm mock            # = .venv/bin/python scripts/export_mock.py
+pnpm preview:build   # = node scripts/build_preview.mjs
+pnpm preview:verify  # = node scripts/verify_preview.mjs
+```
+
+产物写到 `/storage/emulated/0/用户/易词预览/index.html` —— 路径在 `build_preview.mjs`
+里硬编码，换机器要改 `OUT_DIR`。是单个 HTML，CSS/JS/图标全内联，手机浏览器直接打开即可。
+数据是真实词库的子集（每本书前两个单元、最多 60 条）；生成文档仍需真实后端。
+
+## 数据规模（写文档时实测）
+
+| 项 | 数量 |
+| --- | --- |
+| 词条行数 | 1601（教材词 1323 + 扩充短语 278），来自 `entries` 表 |
+| 去重后词形 | 1580 —— 查询层会把同形词合并，题量按这个算 |
+| 例句 | 2549 |
+| 释义 | 13795 条，来自 4 个来源 |
+| 测试 | Rust 27 个（db 11 / pdf 13 / docx 3） |
+
+两个词条数不一样是正常的：1601 是库里的行数（同一个词在不同单元各占一行），
+1580 是合并同形词后的题量。全量 1580 条导出实测：PDF 1.3 秒、DOCX 0.14 秒。
+
+## 当前状态
+
+已完成：四本教材 + 扩充短语 + 释义 + 例句；四种卷面（四选 n / 句子 / 选词填空 / 笔记）；
+PDF 与 Word 双格式；Android 保存到公共下载目录并调起系统分享；Windows 安装包；
+GitHub Actions 双端构建并通过签名。
+
+已知限制：
+- AI 翻译来源只有数据入口（`data/senses/ai.tsv`），没有实际译文，勾选会被跳过
+- 未在真机上验证过分享面板里实际有哪些应用
+- 视觉细节只能靠人看
+
+
  
  

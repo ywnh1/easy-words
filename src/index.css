@@ -43,9 +43,14 @@ body {
 .safe-bottom {
   padding-bottom: var(--safe-bottom);
 }
+/*
+ * 水平安全区用 max() 兜底。
+ * 之前直接写 padding-left: var(--safe-left)，而手机上这个值是 0px，
+ * 会把组件自带的 px 覆盖成 0 —— 按钮就贴到屏幕最左最右了。
+ */
 .safe-x {
-  padding-left: var(--safe-left);
-  padding-right: var(--safe-right);
+  padding-left: max(var(--safe-left), 20px);
+  padding-right: max(var(--safe-right), 20px);
 }
 
 /* 顶栏 / 底栏与页面同底色，靠一条细边和白卡分开 */

@@ -71,11 +71,10 @@ export function Home({
       direction="column"
       align="center"
       justify="center"
-      px="4"
       className="safe-top safe-bottom safe-x"
       style={{ minHeight: "100dvh" }}
     >
-      <Flex direction="column" align="center" gap="4" style={{ width: "100%", maxWidth: 400 }}>
+      <Flex direction="column" align="center" gap="4" style={{ width: "100%", maxWidth: 360 }}>
         <img
           src="/icon.png"
           alt=""
