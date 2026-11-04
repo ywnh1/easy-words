@@ -1,2 +1,7 @@
+# 单包仓库。这个文件主要用来放 allowBuilds，
+# 但 pnpm 11 要求存在 packages 字段，缺失会让 CI 的 setup-node 直接失败。
+packages:
+  - "."
+
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
