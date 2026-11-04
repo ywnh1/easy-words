@@ -77,7 +77,12 @@ const bodyText = () => {
 const problems = [];
 /** 记录实测到的规模，输出里带出来，方便判断断言是不是空跑 */
 const marks = { tiles: 0 };
-const clickText = async (label, sel = "button") => {
+/**
+ * 点一个元素。同时认三种写法：文字匹配、aria-label 匹配、
+ * 以及 Radix 的 Dialog.Trigger 注入到子元素上的 role="button"。
+ * 只查 <button> 会漏掉 PickerField 这类自定义触发块。
+ */
+const clickText = async (label, sel = "button, [role=button], [role=switch], [role=checkbox]") => {
   const el = [...doc.querySelectorAll(sel)].find(
     (n) => n.textContent?.trim() === label || n.getAttribute("aria-label") === label,
   );
@@ -86,6 +91,12 @@ const clickText = async (label, sel = "button") => {
   await wait();
   return true;
 };
+
+/** 按 aria-label 前缀找元素（PickerField 的摘要按钮） */
+const findByLabelPrefix = (prefix) =>
+  [...doc.querySelectorAll("[role=button], button")].find((n) =>
+    (n.getAttribute("aria-label") ?? "").startsWith(prefix),
+  );
 const expect = (cond, msg) => {
   if (!cond) problems.push(msg);
 };
@@ -98,8 +109,8 @@ expect(bodyText().includes("关于"), "首页缺少「关于」按钮");
 // ---------- 关于页 ----------
 if (await clickText("关于")) {
   const t = bodyText();
-  expect(t.includes("版本"), "关于页缺少版本号");
-  expect(/v\d+\.\d+\.\d+/.test(t), "关于页没有具体版本号");
+  // 关于页把版本号写进了标题行（「…· v0.1.0」），没有单独的「版本」标签
+  expect(/v\d+\.\d+\.\d+/.test(t), "关于页缺少版本号");
   expect(t.includes("MIT"), "关于页缺少开源协议");
   expect(t.includes("源代码"), "关于页缺少仓库地址一栏");
   expect(t.includes("问题反馈"), "关于页缺少 issue 地址一栏");
@@ -146,19 +157,17 @@ if (!(await clickText("开始出题"))) {
   }
 
   // 选择器：点开教材弹窗 → 逐个取消 → 校验必填
-  const pickerBtn = [...doc.querySelectorAll("button")].find((n) =>
-    (n.getAttribute("aria-label") ?? "").startsWith("教材："),
-  );
+  const pickerBtn = findByLabelPrefix("教材：");
   expect(!!pickerBtn, "第一步没有「教材」选择按钮");
   if (pickerBtn) {
     pickerBtn.click();
-    await wait(500);
+    await wait(800);
     const dialog = doc.querySelector('[role="dialog"]');
     expect(!!dialog, "点教材按钮后没有弹出选择框");
     if (dialog) {
-      // aria-pressed 的选项块可能被 Mantine 的 portal 渲染到别处，
-      // 所以从整个 document 里找，不用限定在 dialog 内
-      const tiles = [...doc.querySelectorAll('button[aria-pressed]')];
+      // OptionTile 渲染成 role=button 的 div，不是 <button>；
+      // 而且 Radix 的 portal 会把它挂到 body 末尾，所以全文查找
+      const tiles = [...doc.querySelectorAll("[aria-pressed]")];
       marks.tiles = tiles.length;
       expect(tiles.length >= 1, `教材弹窗里没有选项（${tiles.length}）`);
       // 逐个点掉已选的，模拟清空
@@ -168,29 +177,25 @@ if (!(await clickText("开始出题"))) {
           await wait(120);
         }
       }
-      // 关掉弹窗
-      [...dialog.querySelectorAll("button")]
-        .find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"))
-        ?.click();
-      await wait(300);
+      // 关掉弹窗：点弹窗里的「完成」按钮，比猜关闭图标的 aria-label 可靠
+      await clickText("完成");
+      await wait(400);
     }
   }
 
-  const nextBtn = [...doc.querySelectorAll("button")].find(
+  const nextBtn = [...doc.querySelectorAll("button, [role=button]")].find(
     (n) => n.textContent?.trim() === "下一步",
   );
   expect(nextBtn?.disabled === true, "教材一个都没选时「下一步」仍可点");
   expect(bodyText().includes("至少选一本书"), "没选教材时没有提示");
 
   // 重新选回来
-  const pickerBtn2 = [...doc.querySelectorAll("button")].find((n) =>
-    (n.getAttribute("aria-label") ?? "").startsWith("教材："),
-  );
+  const pickerBtn2 = findByLabelPrefix("教材：");
   if (pickerBtn2) {
     pickerBtn2.click();
-    await wait(400);
+    await wait(800);
     const d2 = doc.querySelector('[role="dialog"]');
-    const tiles = [...doc.querySelectorAll("button[aria-pressed]")];
+    const tiles = [...doc.querySelectorAll("[aria-pressed]")];
     for (const t of tiles) {
       if (t.getAttribute("aria-pressed") === "false") {
         t.click();
@@ -198,12 +203,10 @@ if (!(await clickText("开始出题"))) {
         break; // 选一本就够
       }
     }
-    [...(d2?.querySelectorAll("button") ?? [])]
-      .find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"))
-      ?.click();
-    await wait(400);
+    await clickText("完成");
+    await wait(500);
   }
-  const nextBtn2 = [...doc.querySelectorAll("button")].find(
+  const nextBtn2 = [...doc.querySelectorAll("button, [role=button]")].find(
     (n) => n.textContent?.trim() === "下一步",
   );
   expect(nextBtn2?.disabled === false, "选回教材后「下一步」仍禁用");

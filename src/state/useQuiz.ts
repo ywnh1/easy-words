@@ -90,6 +90,8 @@ export function useQuiz() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   /** 导出成功后的结果，用来弹「已保存 / 分享」对话框 */
   const [exported, setExported] = useState<ExportResult | null>(null);
+  /** 导出失败的原因；和 exported 一起决定弹窗内容 */
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     catalog()
@@ -211,7 +213,10 @@ export function useQuiz() {
     ],
   );
 
-  const clearExport = useCallback(() => setExported(null), []);
+  const clearExport = useCallback(() => {
+    setExported(null);
+    setExportError(null);
+  }, []);
 
   const doExport = useCallback(async () => {
     setBusy(true);
@@ -221,9 +226,12 @@ export function useQuiz() {
       // 不再自动打开文件：手机上打开 PDF 会切走应用，
       // 也没告诉用户文件在哪。改成弹窗，让用户自己选分享还是打开。
       setExported(res);
+      setExportError(null);
       setMsg(null);
       return true;
     } catch (e) {
+      // 失败也弹窗：之前只写在页面底部，用户点了按钮毫无反应，以为卡死
+      setExportError(String(e));
       setMsg({ ok: false, text: String(e) });
       return false;
     } finally {
@@ -299,6 +307,7 @@ export function useQuiz() {
     setMsg,
     exported,
     setExported,
+    exportError,
     clearExport,
     doExport,
   };

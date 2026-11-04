@@ -1,3 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      API 29+ 用 MediaStore 写公共下载目录，不需要任何权限。
+      只有 Android 9 及以下需要写外部存储，用 maxSdkVersion 限住，
+      免得在新系统上多要一个用户看着吓人的权限。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 </manifest>

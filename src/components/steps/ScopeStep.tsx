@@ -1,4 +1,4 @@
-import { Alert, Divider, Group, SimpleGrid, Stack, Text, TextInput } from "@mantine/core";
+import { Box, Callout, Flex, Grid, Separator, Text, TextField } from "@radix-ui/themes";
 import { Info } from "@phosphor-icons/react";
 import { LabelRow } from "../../components/LabelRow";
 import { OptionTile, PickerField } from "../../components/PickerField";
@@ -16,15 +16,13 @@ const KINDS = [
   { value: "phrase", label: "短语", desc: "词组搭配，没有音标" },
 ];
 
-/** 多选集合的通用切换 */
+type Kind = "word" | "phrase";
+
 function toggle<T>(list: T[], v: T): T[] {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
-type Kind = "word" | "phrase";
-
 export function ScopeStep({ quiz }: { quiz: Quiz }) {
-  // ── 摘要文案：不点开也能看清选了什么 ──
   const bookSummary =
     quiz.bookIds.length === 0
       ? "点击选择教材"
@@ -35,7 +33,9 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
             .join("、");
 
   const unitSummary =
-    quiz.units.length === 0 ? "全部单元" : `UNIT ${[...quiz.units].sort((a, b) => a - b).join("、")}`;
+    quiz.units.length === 0
+      ? "全部单元"
+      : `UNIT ${[...quiz.units].sort((a, b) => a - b).join("、")}`;
 
   const initialSummary =
     quiz.initials.length === 0
@@ -72,7 +72,7 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
   };
 
   return (
-    <Stack gap="lg">
+    <Flex direction="column" gap="5">
       <PickerField
         label="教材"
         help={HELP.books}
@@ -85,9 +85,9 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
           quiz.setInitials([]);
         }}
       >
-        {(close) => (
-          <Stack gap="sm">
-            <SimpleGrid cols={1} spacing="xs">
+        {() => (
+          <Flex direction="column" gap="3">
+            <Grid columns="1" gap="2">
               {quiz.books.map((b) => (
                 <OptionTile
                   key={b.id}
@@ -95,76 +95,66 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
                   title={b.volume || b.title}
                   subtitle={`${b.total} 个词条 · ${b.units.length} 个单元`}
                   onClick={() => {
-                    const next = toggle(quiz.bookIds, b.id);
-                    quiz.setBookIds(next);
+                    quiz.setBookIds(toggle(quiz.bookIds, b.id));
                     quiz.setUnits([]);
                     quiz.setInitials([]);
                   }}
                 />
               ))}
-            </SimpleGrid>
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">
+            </Grid>
+            <Flex justify="between">
+              <Text size="1" color="gray">
                 已选 {quiz.bookIds.length} 本
               </Text>
-              <Group gap="xs">
-                <Text
-                  size="sm"
-                  c="brand.6"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => quiz.setBookIds(quiz.books.map((b) => b.id))}
-                >
-                  全选
-                </Text>
-                <Text
-                  size="sm"
-                  c="dimmed"
-                  style={{ cursor: "pointer" }}
-                  onClick={close}
-                >
-                  收起
-                </Text>
-              </Group>
-            </Group>
-          </Stack>
+              <Text
+                size="1"
+                color="blue"
+                role="button"
+                style={{ cursor: "pointer" }}
+                onClick={() => quiz.setBookIds(quiz.books.map((b) => b.id))}
+              >
+                全选
+              </Text>
+            </Flex>
+          </Flex>
         )}
       </PickerField>
 
       {quiz.bookIds.length === 0 && (
-        <Alert color="yellow" variant="light" icon={<Info size={18} />}>
-          至少选一本书才能出题
-        </Alert>
+        <Callout.Root color="amber" size="2">
+          <Callout.Icon>
+            <Info size={17} />
+          </Callout.Icon>
+          <Callout.Text>至少选一本书才能出题</Callout.Text>
+        </Callout.Root>
       )}
 
-      <Divider />
+      <Separator size="4" />
 
-      <PickerField
-        label="单元"
-        help={HELP.units}
-        summary={unitSummary}
-        empty={false}
-      >
+      <PickerField label="单元" help={HELP.units} summary={unitSummary}>
         {() => (
-          <Stack gap="sm">
-            <SimpleGrid cols={3} spacing="xs">
-              {quiz.allUnits.map((u) => (
-                <OptionTile
-                  key={u}
-                  selected={quiz.units.includes(u)}
-                  title={`UNIT ${u}`}
-                  onClick={() => quiz.setUnits(toggle(quiz.units, u))}
-                />
-              ))}
-            </SimpleGrid>
-            {quiz.allUnits.length === 0 && (
-              <Text size="sm" c="dimmed">
+          <Flex direction="column" gap="3">
+            {quiz.allUnits.length === 0 ? (
+              <Text size="2" color="gray">
                 先选教材
               </Text>
+            ) : (
+              <Grid columns="3" gap="2">
+                {quiz.allUnits.map((u) => (
+                  <OptionTile
+                    key={u}
+                    selected={quiz.units.includes(u)}
+                    title={`UNIT ${u}`}
+                    onClick={() => quiz.setUnits(toggle(quiz.units, u))}
+                  />
+                ))}
+              </Grid>
             )}
-            <Group justify="space-between">
+            <Flex justify="between">
               <Text
-                size="sm"
-                c="brand.6"
+                size="1"
+                color="blue"
+                role="button"
                 style={{ cursor: "pointer" }}
                 onClick={() =>
                   quiz.setUnits(quiz.units.length === quiz.allUnits.length ? [] : quiz.allUnits)
@@ -172,23 +162,18 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
               >
                 {quiz.units.length === quiz.allUnits.length ? "全不选" : "全选"}
               </Text>
-              <Text size="sm" c="dimmed">
+              <Text size="1" color="gray">
                 已选 {quiz.units.length} 个
               </Text>
-            </Group>
-          </Stack>
+            </Flex>
+          </Flex>
         )}
       </PickerField>
 
-      <PickerField
-        label="首字母"
-        help={HELP.initials}
-        summary={initialSummary}
-        empty={false}
-      >
+      <PickerField label="首字母" help={HELP.initials} summary={initialSummary}>
         {() => (
-          <Stack gap="sm">
-            <SimpleGrid cols={6} spacing="xs">
+          <Flex direction="column" gap="3">
+            <Grid columns="6" gap="2">
               {quiz.allInitials.map(([ch]) => (
                 <OptionTile
                   key={ch}
@@ -197,11 +182,12 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
                   onClick={() => quiz.setInitials(toggle(quiz.initials, ch))}
                 />
               ))}
-            </SimpleGrid>
-            <Group justify="space-between">
+            </Grid>
+            <Flex justify="between">
               <Text
-                size="sm"
-                c="brand.6"
+                size="1"
+                color="blue"
+                role="button"
                 style={{ cursor: "pointer" }}
                 onClick={() =>
                   quiz.setInitials(
@@ -213,23 +199,18 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
               >
                 {quiz.initials.length === quiz.allInitials.length ? "全不选" : "全选"}
               </Text>
-              <Text size="sm" c="dimmed">
+              <Text size="1" color="gray">
                 已选 {quiz.initials.length} 个
               </Text>
-            </Group>
-          </Stack>
+            </Flex>
+          </Flex>
         )}
       </PickerField>
 
-      <PickerField
-        label="词汇标记"
-        help={HELP.markers}
-        summary={markerSummary}
-        empty={false}
-      >
+      <PickerField label="词汇标记" help={HELP.markers} summary={markerSummary}>
         {() => (
-          <Stack gap="sm">
-            <SimpleGrid cols={1} spacing="xs">
+          <Flex direction="column" gap="3">
+            <Grid columns="1" gap="2">
               {MARKERS.map((m) => (
                 <OptionTile
                   key={m.value}
@@ -243,23 +224,18 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
                   onClick={() => quiz.setMarkers(toggle(quiz.markers, m.value))}
                 />
               ))}
-            </SimpleGrid>
-            <Text size="xs" c="dimmed">
+            </Grid>
+            <Text size="1" color="gray">
               都不选 = 三种都要
             </Text>
-          </Stack>
+          </Flex>
         )}
       </PickerField>
 
-      <PickerField
-        label="词条类型"
-        help={HELP.kinds}
-        summary={kindSummary}
-        empty={false}
-      >
+      <PickerField label="词条类型" help={HELP.kinds} summary={kindSummary}>
         {() => (
-          <Stack gap="sm">
-            <SimpleGrid cols={2} spacing="xs">
+          <Flex direction="column" gap="3">
+            <Grid columns="2" gap="2">
               {KINDS.map((k) => (
                 <OptionTile
                   key={k.value}
@@ -269,11 +245,11 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
                   onClick={() => quiz.setKinds(toggle(quiz.kinds, k.value as Kind))}
                 />
               ))}
-            </SimpleGrid>
-            <Text size="xs" c="dimmed">
+            </Grid>
+            <Text size="1" color="gray">
               都不选 = 两种都要
             </Text>
-          </Stack>
+          </Flex>
         )}
       </PickerField>
 
@@ -285,13 +261,14 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
         onClear={() => quiz.setPagesText("")}
       >
         {() => (
-          <Stack gap="sm">
-            <TextInput
+          <Flex direction="column" gap="3">
+            <TextField.Root
               placeholder="也可以手打，如 12, 15-20"
               value={quiz.pagesText}
               onChange={(e) => quiz.setPagesText(e.currentTarget.value)}
+              size="3"
             />
-            <SimpleGrid cols={5} spacing="xs">
+            <Grid columns="5" gap="2">
               {quiz.allPages.map((p) => (
                 <OptionTile
                   key={p}
@@ -302,43 +279,55 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
                       .split(/[,，\s]+/)
                       .map((s) => s.trim())
                       .filter(Boolean);
-                    const has = cur.includes(String(p));
-                    const next = has
+                    const next = cur.includes(String(p))
                       ? cur.filter((x) => x !== String(p))
                       : [...cur, String(p)];
                     quiz.setPagesText(next.join(", "));
                   }}
                 />
               ))}
-            </SimpleGrid>
-          </Stack>
+            </Grid>
+          </Flex>
         )}
       </PickerField>
 
-      <Divider />
+      <Separator size="4" />
 
-      <TextInput
-        label={<LabelRow text="指定单词" help={HELP.query} optional />}
-        placeholder="mood, campus, senior"
-        value={quiz.query}
-        onChange={(e) => quiz.setQuery(e.currentTarget.value)}
-        description="按名字搜索，支持部分匹配"
-      />
+      <Box>
+        <LabelRow text="指定单词" help={HELP.query} optional />
+        <Box mt="2">
+          <TextField.Root
+            placeholder="mood, campus, senior"
+            value={quiz.query}
+            onChange={(e) => quiz.setQuery(e.currentTarget.value)}
+            size="3"
+          />
+        </Box>
+        <Text size="1" color="gray" mt="1" style={{ display: "block" }}>
+          按名字搜索，支持部分匹配
+        </Text>
+      </Box>
 
-      <Group justify="space-between" align="center">
-        <Text size="sm" c="dimmed">
+      <Flex justify="between" align="center">
+        <Text size="2" color="gray">
           命中{" "}
-          <Text span fw={700} c="brand.6" fz="md">
+          <Text size="3" weight="bold" color="blue">
             {quiz.total}
           </Text>{" "}
           条
         </Text>
         {quiz.total === 0 && (
-          <Text size="sm" c="brand.6" style={{ cursor: "pointer" }} onClick={resetFilters}>
+          <Text
+            size="2"
+            color="blue"
+            role="button"
+            style={{ cursor: "pointer" }}
+            onClick={resetFilters}
+          >
             清空筛选
           </Text>
         )}
-      </Group>
-    </Stack>
+      </Flex>
+    </Flex>
   );
 }

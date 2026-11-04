@@ -1,6 +1,5 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
 import pkg from "./package.json";
 
 // Tauri 需要固定端口，并且不要在端口被占用时自动换端口
@@ -9,7 +8,7 @@ export default defineConfig(({ mode }) => {
   const single = mode === "preview";
   return {
     base: single ? "./" : "/",
-    plugins: [react(), tailwindcss()],
+    plugins: [react()],
     clearScreen: false,
     // 版本号只有一处来源：package.json
     define: {
@@ -38,8 +37,8 @@ export default defineConfig(({ mode }) => {
         : {
             // Mantine 一个人就占一半体积，单独成块，升级组件库时主包指纹不变
             output: {
-              // 只拆 Mantine：它单块就超过 500KB，拆开后主包升级不受影响
-              manualChunks: { mantine: ["@mantine/core", "@mantine/hooks"] },
+              // Radix Themes 自带一整套组件与样式，单独成块
+              manualChunks: { radix: ["@radix-ui/themes"] },
             },
           },
     },

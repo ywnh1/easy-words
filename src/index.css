@@ -1,11 +1,7 @@
-/* 图层顺序必须在最前面声明：mantine 最低，Tailwind 的 utilities 才能覆盖它 */
-@layer mantine, theme, base, components, utilities;
-
-@import "tailwindcss";
-
-@theme {
-  --color-bg: oklch(0.99 0.003 250);
-}
+/*
+ * 只放 Radix Themes 管不到的东西：安全区、滚动行为、动效偏好。
+ * 颜色、间距、字号、圆角全部交给 Radix Themes。
+ */
 
 html,
 body,
@@ -15,13 +11,17 @@ body,
 
 body {
   margin: 0;
-  /* 页面底色用浅灰，白卡浮在上面 —— 纯白页面会让所有按钮都糊成一片 */
-  background: light-dark(var(--mantine-color-slate-0), var(--mantine-color-dark-8));
-  color: var(--mantine-color-text);
+  /* 页面底色用 gray-1，卡片是 white —— 靠底色差分层次 */
+  background: var(--gray-2);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
-  /* 触控优化：去掉 300ms 点击延迟 */
+  /* 去掉 300ms 点击延迟 */
   touch-action: manipulation;
+}
+
+.dark body,
+.dark {
+  background: var(--gray-1);
 }
 
 /* 移动端点击不要有高亮块 */
@@ -29,10 +29,7 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/*
- * 安全区。Android 状态栏 / 手势条、iOS 刘海都靠这四个变量避让。
- * 底部操作栏单独留出 home indicator 的高度。
- */
+/* 安全区：Android 状态栏 / 手势条、刘海屏 */
 :root {
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -51,16 +48,57 @@ body {
   padding-right: var(--safe-right);
 }
 
-/* 顶栏和底栏跟页面同色，与白卡形成对比；加一层细分割线当边界 */
+/* 顶栏 / 底栏与页面同底色，靠一条细边和白卡分开 */
 .chrome {
-  background: light-dark(var(--mantine-color-slate-0), var(--mantine-color-dark-8));
+  background: var(--gray-2);
+}
+.dark .chrome {
+  background: var(--gray-1);
 }
 
-/* 底部固定操作栏：内容区要留出同样高度的空白，否则最后一项被盖住 */
+/* 底部固定操作栏：留出 home indicator */
 .action-bar {
   padding-bottom: calc(12px + var(--safe-bottom));
   padding-left: calc(16px + var(--safe-left));
   padding-right: calc(16px + var(--safe-right));
+}
+
+/* 步骤块：选中时品牌色描边 + 浅底 */
+.pick-tile {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 120ms ease;
+}
+.pick-tile:active {
+  transform: scale(0.985);
+}
+.pick-tile[data-selected="true"] {
+  border-color: var(--accent-9) !important;
+  background: var(--accent-3);
+}
+.dark .pick-tile[data-selected="true"] {
+  /* 深色下 accent-3 太亮，用更低的档位 */
+  background: var(--accent-4);
+}
+
+/*
+ * 步骤切换的进场动画。只动 opacity 和 translateY，
+ * 不动布局，避免列表重排导致的卡顿。
+ */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step-enter {
+  animation: step-in 200ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 /* 尊重系统的「减少动效」设置 */

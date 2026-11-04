@@ -640,6 +640,54 @@ mod tests {
         }
     }
 
+    /// 全量出题的耗时与成功率。1580 条是四本书合并后的数量，
+    /// 用户点「生成文档」时可能就是这个规模 —— 必须能在合理时间内跑完。
+    /// cargo test -- --ignored full_export --nocapture
+    #[test]
+    #[ignore]
+    fn full_export() {
+        use crate::content::{Field, Mode, Spec};
+        use std::time::Instant;
+
+        let con = seed_conn("full");
+        let f = Filter {
+            book_ids: vec![
+                "waiyanshe-required-1".into(),
+                "waiyanshe-required-2".into(),
+                "waiyanshe-required-3".into(),
+                "waiyanshe-selective-1".into(),
+            ],
+            ..Default::default()
+        };
+        let entries = query(&con, &f, None).unwrap();
+        println!("词条数 {}", entries.len());
+
+        let spec = Spec {
+            mode: Mode::Columns,
+            fields: vec![Field::Word, Field::Phonetic, Field::Meaning, Field::Blank],
+            answer_key: true,
+            ..Default::default()
+        };
+
+        let t = Instant::now();
+        let pdf = crate::pdf::render(&entries, &spec).unwrap();
+        println!("PDF  {:?}  {} KB", t.elapsed(), pdf.len() / 1024);
+        assert!(pdf.starts_with(b"%PDF"));
+
+        let t = Instant::now();
+        let docx = crate::docx::render(&entries, &spec).unwrap();
+        println!("DOCX {:?}  {} KB", t.elapsed(), docx.len() / 1024);
+        assert!(docx.starts_with(b"PK"));
+
+        // 句子题也跑一遍：每词一条例句，条目同样多
+        let mut s2 = spec.clone();
+        s2.mode = Mode::Sentence;
+        s2.answer_key = true;
+        let t = Instant::now();
+        let pdf2 = crate::pdf::render(&entries, &s2).unwrap();
+        println!("句子 PDF {:?}  {} KB", t.elapsed(), pdf2.len() / 1024);
+    }
+
     #[test]
     fn catalog_has_books() {
         let con = seed_conn("catalog");
@@ -770,6 +818,43 @@ mod tests {
         let mut sorted = initials.clone();
         sorted.sort();
         assert_eq!(initials, sorted, "首字母顺序不对");
+    }
+
+    /// 教材印刷符号的事实：只有必修 1/2/3 有方框词，
+    /// 选择性必修一只有星号和普通词。
+    ///
+    /// 早先把扫描件上的小圆点 • 当成方框，让选必一凭空多出 12 条方框词。
+    /// 这条测试盯住这个事实，数据一歪就会报。
+    #[test]
+    fn marker_facts_match_textbooks() {
+        let con = seed_conn("markers");
+        let count = |book: &str, marker: &str| -> i64 {
+            con.query_row(
+                "SELECT COUNT(*) FROM entries WHERE book_id=?1 AND marker=?2",
+                [book, marker],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+
+        for b in [
+            "waiyanshe-required-1",
+            "waiyanshe-required-2",
+            "waiyanshe-required-3",
+        ] {
+            assert!(count(b, "box") > 0, "{b} 应该有方框词");
+            assert!(count(b, "star") > 0, "{b} 应该有星号词");
+            assert!(count(b, "none") > 0, "{b} 应该有普通词");
+        }
+
+        // 选择性必修一：没有方框
+        assert_eq!(
+            count("waiyanshe-selective-1", "box"),
+            0,
+            "选择性必修一不该有方框词"
+        );
+        assert!(count("waiyanshe-selective-1", "star") > 0);
+        assert!(count("waiyanshe-selective-1", "none") > 0);
     }
 
     #[test]

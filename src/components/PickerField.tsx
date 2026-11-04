@@ -1,16 +1,15 @@
 import { useState } from "react";
-import { Box, Button, Group, Modal, Stack, Text } from "@mantine/core";
+import { Box, Button, Dialog, Flex, Text } from "@radix-ui/themes";
 import { CaretRight, Check } from "@phosphor-icons/react";
 import { Help } from "./Help";
 
 /**
- * 一行「按钮 + 摘要」，点开是选择弹窗。
+ * 「摘要按钮 + 选择弹窗」。
  *
- * 为什么不用原生 Select / MultiSelect：手机上点开会盖掉大半个屏幕的
- * 系统下拉，一屏只能看到几个选项，竖向滚还容易误触。弹窗里放网格，
- * 一屏能看十几个，触控区也够大。
+ * 为什么不用原生下拉：手机上点开会盖掉大半个屏幕，一屏只看得见几个选项。
+ * 弹窗里放网格，一屏能看十几个，触控区也够大。
  *
- * 触发按钮本身就是摘要：用户不点开也能看到当前选了什么。
+ * 触发按钮本身就是摘要：不点开也能看到当前选了什么。
  */
 export function PickerField({
   label,
@@ -19,152 +18,163 @@ export function PickerField({
   empty,
   required,
   optional,
+  hint,
   onClear,
   children,
 }: {
   label: string;
   help?: React.ReactNode;
-  /** 当前选择的文字摘要 */
   summary: string;
-  /** 是否还没选任何东西（用灰色提示样式） */
   empty?: boolean;
   required?: boolean;
   optional?: boolean;
-  /** 弹窗里的「清空」 */
+  /** 按钮下方的一行小字说明 */
+  hint?: string;
   onClear?: () => void;
-  /** 弹窗内容，通常是选项网格 */
   children: (close: () => void) => React.ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
 
   return (
-    <>
-      <Stack gap={6}>
-        <Group gap={6} wrap="nowrap" align="center">
-          <Text size="sm" fw={500} c="dimmed">
-            {label}
+    <Box>
+      <Flex gap="2" align="center" wrap="nowrap" mb="2">
+        <Text size="2" weight="medium" color="gray">
+          {label}
+        </Text>
+        {required && (
+          <Text size="1" weight="medium" color="blue">
+            必填
           </Text>
-          {required && (
-            <Text span size="xs" fw={500} c="brand.6">
-              必填
-            </Text>
-          )}
-          {optional && (
-            <Text span size="xs" c="dimmed">
-              选填
-            </Text>
-          )}
-          {help && <Help title={label}>{help}</Help>}
-        </Group>
+        )}
+        {optional && (
+          <Text size="1" color="gray">
+            选填
+          </Text>
+        )}
+        {help && <Help title={label}>{help}</Help>}
+      </Flex>
 
-        <Box
-          component="button"
-          type="button"
-          onClick={() => setOpened(true)}
-          aria-label={`${label}：${summary}`}
-          style={{
-            width: "100%",
-            minHeight: 48,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${
-              empty
-                ? "var(--mantine-color-slate-3)"
-                : "var(--mantine-color-brand-4)"
-            }`,
-            background: empty
-              ? "var(--mantine-color-white)"
-              : "var(--mantine-color-brand-0)",
-            cursor: "pointer",
-            textAlign: "left",
-          }}
-        >
-          <Text
-            size="sm"
-            style={{ flex: 1, minWidth: 0 }}
-            c={empty ? "dimmed" : "brand.8"}
-            fw={empty ? 400 : 600}
-            lineClamp={2}
+      <Dialog.Root open={opened} onOpenChange={setOpened}>
+        <Dialog.Trigger>
+          <Flex
+            align="center"
+            gap="2"
+            px="3"
+            py="2"
+            style={{
+              minHeight: 48,
+              width: "100%",
+              borderRadius: "var(--radius-3)",
+              border: `1px solid ${
+                empty ? "var(--gray-a6)" : "var(--accent-a6)"
+              }`,
+              background: empty ? "var(--color-panel)" : "var(--accent-a2)",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+            role="button"
+            tabIndex={0}
+            aria-label={`${label}：${summary}`}
           >
-            {summary}
-          </Text>
-          <CaretRight
-            size={18}
-            color="var(--mantine-color-slate-5)"
-            style={{ flexShrink: 0 }}
-          />
-        </Box>
-      </Stack>
+            <Text
+              size="2"
+              weight={empty ? "regular" : "medium"}
+              color={empty ? "gray" : undefined}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                color: empty ? undefined : "var(--accent-11)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+              }}
+            >
+              {summary}
+            </Text>
+            <CaretRight size={16} color="var(--gray-8)" style={{ flexShrink: 0 }} />
+          </Flex>
+        </Dialog.Trigger>
 
-      <Modal
-        opened={opened}
-        onClose={() => setOpened(false)}
-        title={label}
-        size="md"
-        closeOnClickOutside
-      >
-        <Stack gap="md">
-          {onClear && (
-            <Group justify="flex-end">
-              <Button
-                size="compact-sm"
-                variant="subtle"
-                color="gray"
-                onClick={() => {
-                  onClear();
-                  setOpened(false);
-                }}
-              >
-                清空
-              </Button>
-            </Group>
-          )}
+        <Dialog.Content maxWidth="520px">
+          <Dialog.Title size="5" mb="1">
+            {label}
+          </Dialog.Title>
+          <Dialog.Description size="2" color="gray" mb="4">
+            选好后按右上角关闭即可
+          </Dialog.Description>
+
           {children(() => setOpened(false))}
-        </Stack>
-      </Modal>
-    </>
+
+          <Flex justify="between" align="center" mt="4" gap="3">
+            {onClear ? (
+              <Dialog.Close>
+                <Button
+                  variant="soft"
+                  color="gray"
+                  size="2"
+                  onClick={() => {
+                    onClear();
+                  }}
+                >
+                  清空
+                </Button>
+              </Dialog.Close>
+            ) : (
+              <span />
+            )}
+            <Dialog.Close>
+              <Button size="2">完成</Button>
+            </Dialog.Close>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
+
+      {hint && (
+        <Text size="1" color="gray" mt="1" style={{ display: "block" }}>
+          {hint}
+        </Text>
+      )}
+    </Box>
   );
 }
 
-/** 网格中的一个可选块。选中态用品牌色描边 + 浅底 + 勾。 */
+/** 网格里的可选块。选中态：品牌色描边 + 浅底 + 勾。 */
 export function OptionTile({
   selected,
   onClick,
   title,
   subtitle,
+  icon,
   disabled,
 }: {
   selected: boolean;
   onClick: () => void;
   title: string;
   subtitle?: string;
+  /** 可选的左侧图标，用于题型这类需要辨识度的选项 */
+  icon?: React.ReactNode;
   disabled?: boolean;
 }) {
   return (
     <Box
-      component="button"
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
+      className="pick-tile"
+      data-selected={selected}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
       aria-pressed={selected}
+      onClick={disabled ? undefined : onClick}
       style={{
         position: "relative",
-        minHeight: 56,
+        minHeight: 54,
         width: "100%",
         padding: "10px 12px",
-        borderRadius: 12,
-        border: `1.5px solid ${
-          selected ? "var(--mantine-color-brand-6)" : "var(--mantine-color-slate-3)"
-        }`,
-        background: selected
-          ? "var(--mantine-color-brand-0)"
-          : "var(--mantine-color-white)",
+        borderRadius: "var(--radius-3)",
+        border: "1.5px solid var(--gray-a6)",
+        background: "var(--color-panel-solid)",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.45 : 1,
-        textAlign: "left",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
@@ -178,23 +188,32 @@ export function OptionTile({
             top: 6,
             right: 6,
             display: "flex",
-            color: "var(--mantine-color-brand-6)",
+            color: "var(--accent-11)",
           }}
           aria-hidden
         >
-          <Check size={15} weight="bold" />
+          <Check size={14} weight="bold" />
         </Box>
       )}
-      <Text
-        size="sm"
-        fw={selected ? 600 : 500}
-        c={selected ? "brand.8" : "slate.8"}
-        pr={selected ? 16 : 0}
-      >
-        {title}
-      </Text>
+      <Flex align="center" gap="2" pr={selected ? "3" : "0"}>
+        {icon && (
+          <Box
+            style={{
+              color: selected ? "var(--accent-11)" : "var(--gray-10)",
+              display: "flex",
+              flexShrink: 0,
+            }}
+            aria-hidden
+          >
+            {icon}
+          </Box>
+        )}
+        <Text size="2" weight={selected ? "medium" : "regular"}>
+          {title}
+        </Text>
+      </Flex>
       {subtitle && (
-        <Text size="xs" c="dimmed">
+        <Text size="1" color="gray">
           {subtitle}
         </Text>
       )}

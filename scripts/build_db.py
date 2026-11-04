@@ -135,8 +135,12 @@ CREATE INDEX idx_senses_entry    ON senses(entry_id);
 PRAGMA user_version = 3;
 """
 
-# 扫描件里出现过的 marker 别名，统一归一。box 与 bullet 是同一个符号（□）。
-MARKER_ALIAS = {"star": "star", "box": "box", "bullet": "box", "none": "none", "": "none"}
+# 扫描件里出现过的 marker 别名，统一归一。
+# 教材上只有两种前置符号：小圆点 • 和空心方框 □。
+#   •  —— 与「加星」同级（不作要求），对应 star
+#   □  —— 选择性必修单词，对应 box
+# 早先把 • 当成方框，导致选择性必修一凭空多出 12 条「方框词」。
+MARKER_ALIAS = {"star": "star", "box": "box", "bullet": "star", "none": "none", "": "none"}
 
 # 比较两个释义是否「说的是同一件事」时忽略这些字符
 _PUNCT = str.maketrans("", "", "，,；;。.、·… ()（）/／\"'’‘“”")

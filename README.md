@@ -71,14 +71,17 @@ Word 用宋体 + Times New Roman，不依赖额外字体。
   每个配置项后面有个小问号，点开是说明弹窗。
 - **关于**：版本号、开源协议、仓库地址、Issue 地址。
 
-组件库用 [Mantine](https://mantine.dev) v9（`@mantine/core` + `@mantine/hooks`）：
-`Modal` 做说明弹窗、`MultiSelect`/`Chip`/`Radio.Card`/`SegmentedControl`/`NumberInput`
-等做表单控件。图标统一用 [Phosphor](https://phosphoricons.com)（`@phosphor-icons/react`），
-不用 emoji 或字符箭头 —— 字符在不同系统上字重和宽度都不一致。
+组件库用 [Radix Themes](https://www.radix-ui.com/themes) v3 —— 它自带一整套
+设计系统（颜色、字号、间距、圆角、深浅色），不依赖任何 CSS 框架。
+`Dialog` 做说明与选择弹窗、`Card`/`SegmentedControl`/`Callout`/`TextField` 等做界面。
 
-Tailwind 只留作布局与少量微调：`src/index.css` 开头声明了
-`@layer mantine, theme, base, components, utilities`，让 Tailwind 的工具类能覆盖
-Mantine 的默认样式；Mantine 侧用 `styles.layer.css`。
+图标统一用 [Phosphor](https://phosphoricons.com)，不用 emoji 或字符箭头 ——
+字符在不同系统上字重和宽度都不一致，是「错位」的来源之一。
+
+**为什么不用 Tailwind**：项目只用到 4 个自定义 CSS 类（`safe-*` 与 `action-bar`），
+一个工具类都没用上；而 Tailwind 的 preflight 会把组件库的按钮背景、Checkbox 方框、
+弹窗定位全部重置掉 —— 表现就是按钮全白、勾选框消失、弹窗跑到屏幕外。
+用不到就删掉。
 
 ### 导出后的分享（Android）
 
@@ -100,8 +103,7 @@ Tauri 不会自动注册），由 `scripts/link-android-plugins.py` 完成。
 
 这个应用主要在手机上用，所以：
 
-- **触控尺寸**：主题里把 Button / ActionIcon / Checkbox / Chip 的最小尺寸统一抬到 44px。
-  Mantine 默认 md 是 36px，手指点不准。
+- **触控尺寸**：可点元素统一 44-52px。Radix Themes 的 size 3/4 基本就是这个量级。
 - **底部固定操作栏**：上一步 / 下一步固定在屏幕底部，不用滚到底才找得到；
   内容区留出 `calc(96px + var(--safe-bottom))` 的空白，最后一项不会被盖住。
 - **进度条代替步名**：五步的完整 Stepper 在 375px 屏上必然换行断字，
@@ -110,8 +112,9 @@ Tauri 不会自动注册），由 `scripts/link-android-plugins.py` 完成。
   改成一词一张卡片，词形、音标、释义分三层。
 - **安全区**：`env(safe-area-inset-*)` 通过 `.safe-top` / `.safe-bottom` / `.safe-x` 应用，
   底部操作栏单独留 home indicator 的高度。
-- **深色模式**：跟随系统，`ColorSchemeScript` 把首帧配色写进 `<head>`，避免先闪白底。
-  颜色全部走 Mantine 语义 token，不写死十六进制。
+- **深色模式**：`appearance="inherit"` 跟随系统。Radix Themes 为深浅两套外观
+  分别调过每个色阶的对比度，所以不会出现「切到深色后按钮还是亮得刺眼」。
+  颜色一律走 `var(--accent-9)` 这类语义变量，不写死十六进制。
 - **减少动效**：`prefers-reduced-motion` 下把过渡压到 0.01ms。
 
 主色取应用图标上那支笔的蓝（`#3b82f6`），不是套模板的紫 —— 图标和界面用同一套色，

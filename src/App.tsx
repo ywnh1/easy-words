@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Box, Text } from "@mantine/core";
+import { Box, Flex, Text } from "@radix-ui/themes";
 import { Info } from "@phosphor-icons/react";
 import { Wizard } from "./components/Wizard";
 import { About } from "./pages/About";
@@ -12,31 +12,21 @@ export default function App() {
   const [page, setPage] = useState<Page>("home");
 
   return (
-    <Box mih="100dvh">
+    <Box style={{ minHeight: "100dvh" }}>
       {!inTauri && (
-        <Box
-          className="safe-top"
-          style={{
-            background: "var(--mantine-color-yellow-light)",
-            color: "var(--mantine-color-yellow-light-color)",
-          }}
-        >
-          <Box
-            px="md"
-            py={6}
-            style={{
-              display: "flex",
-              gap: 6,
-              alignItems: "flex-start",
-              maxWidth: 560,
-              margin: "0 auto",
-            }}
+        <Box className="safe-top" style={{ background: "var(--amber-4)" }}>
+          <Flex
+            gap="2"
+            align="start"
+            px="3"
+            py="2"
+            style={{ maxWidth: 560, margin: "0 auto" }}
           >
-            <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-            <Text size="xs" lh={1.4}>
-              界面预览版：数据是真实词库的一小部分，配置与预览可用，生成文档需要桌面或安卓客户端。
+            <Info size={15} style={{ flexShrink: 0, marginTop: 2, color: "var(--amber-11)" }} />
+            <Text size="1" style={{ color: "var(--amber-11)", lineHeight: 1.5 }}>
+              界面预览版：数据是真实词库的一小部分，配置与预览可用，生成文档需要客户端。
             </Text>
-          </Box>
+          </Flex>
         </Box>
       )}
 

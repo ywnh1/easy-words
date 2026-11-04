@@ -1,16 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  Center,
-  Group,
-  Paper,
-  SimpleGrid,
-  Skeleton,
-  Stack,
-  Text,
-  Title,
-} from "@mantine/core";
+import { Box, Button, Card, Flex, Grid, Heading, Skeleton, Text } from "@radix-ui/themes";
 import {
   ArrowRight,
   BookOpen,
@@ -22,7 +11,7 @@ import { catalog } from "../lib/api";
 import { APP } from "../lib/meta";
 import type { BookInfo } from "../lib/types";
 
-/** 统计项：大数字 + 小标签。首页不空的关键是给出真实数据。 */
+/** 统计块：大数字 + 小标签。首页不空的关键是给出真实数据。 */
 function Stat({
   value,
   label,
@@ -33,23 +22,27 @@ function Stat({
   icon: React.ReactNode;
 }) {
   return (
-    <Paper p="sm" radius="lg" style={{ flex: 1, minWidth: 0 }}>
-      <Stack gap={2} align="center">
-        <Text c="brand.6" style={{ display: "flex", marginBottom: 2 }} aria-hidden>
+    <Card size="2" variant="surface">
+      <Flex direction="column" align="center" gap="1">
+        <Box style={{ color: "var(--accent-9)", display: "flex" }} aria-hidden>
           {icon}
-        </Text>
+        </Box>
         {value === null ? (
-          <Skeleton height={26} width={44} radius="sm" />
+          <Skeleton width="44px" height="26px" />
         ) : (
-          <Text fz={22} fw={700} lh={1.15} style={{ fontVariantNumeric: "tabular-nums" }}>
+          <Text
+            size="6"
+            weight="bold"
+            style={{ fontVariantNumeric: "tabular-nums", lineHeight: 1.1 }}
+          >
             {value.toLocaleString()}
           </Text>
         )}
-        <Text size="xs" c="dimmed" ta="center" lh={1.3}>
+        <Text size="1" color="gray">
           {label}
         </Text>
-      </Stack>
-    </Paper>
+      </Flex>
+    </Card>
   );
 }
 
@@ -74,84 +67,56 @@ export function Home({
   const examples = ready ? list.reduce((a, b) => a + b.with_examples, 0) : null;
 
   return (
-    <Center
-      mih="100dvh"
-      px="lg"
+    <Flex
+      direction="column"
+      align="center"
+      justify="center"
+      px="4"
       className="safe-top safe-bottom safe-x"
-      style={{ overflowY: "auto" }}
+      style={{ minHeight: "100dvh" }}
     >
-      <Stack align="center" gap={0} w="100%" maw={420} py="xl">
-        {/* 应用图标：与桌面/手机图标同一张 */}
-        <Box
-          component="img"
+      <Flex direction="column" align="center" gap="4" style={{ width: "100%", maxWidth: 400 }}>
+        <img
           src="/icon.png"
           alt=""
-          w={80}
-          h={80}
-          mb="md"
+          width={84}
+          height={84}
           style={{
             borderRadius: 20,
             boxShadow: "0 10px 30px -8px rgba(59,130,246,.45)",
+            display: "block",
           }}
         />
 
-        <Title order={1} ta="center" fz={32} lh={1.15}>
+        <Heading size="8" align="center">
           {APP.name}
-        </Title>
+        </Heading>
 
-        <SimpleGrid cols={3} spacing="xs" w="100%" mt="xl">
+        <Grid columns="3" gap="2" width="100%" mt="2">
           <Stat
             value={ready ? list.length : null}
             label="册教材"
-            icon={<BookOpen size={20} weight="duotone" />}
+            icon={<BookOpen size={19} weight="duotone" />}
           />
-          <Stat
-            value={entries}
-            label="个词条"
-            icon={<StackIcon size={20} weight="duotone" />}
-          />
-          <Stat
-            value={examples}
-            label="条例句"
-            icon={<Quotes size={20} weight="duotone" />}
-          />
-        </SimpleGrid>
+          <Stat value={entries} label="个词条" icon={<StackIcon size={19} weight="duotone" />} />
+          <Stat value={examples} label="条例句" icon={<Quotes size={19} weight="duotone" />} />
+        </Grid>
 
-        <Stack w="100%" gap="sm" mt="xl">
-          <Button
-            size="xl"
-            fullWidth
-            onClick={onStart}
-            disabled={!ready}
-            rightSection={<ArrowRight size={20} weight="bold" />}
-            styles={{ root: { height: 54, fontSize: 17 } }}
-          >
+        <Flex direction="column" gap="2" width="100%" mt="4">
+          <Button size="4" onClick={onStart} disabled={!ready} style={{ height: 52 }}>
             开始出题
+            <ArrowRight size={18} weight="bold" />
           </Button>
-          <Button
-            size="lg"
-            fullWidth
-            variant="default"
-            onClick={onAbout}
-            leftSection={<Info size={18} />}
-            styles={{ root: { height: 48 } }}
-          >
+          <Button size="3" variant="soft" color="gray" onClick={onAbout} style={{ height: 46 }}>
+            <Info size={17} />
             关于
           </Button>
-        </Stack>
+        </Flex>
 
-        <Group gap={6} mt="xl">
-          <Text size="xs" c="dimmed">
-            v{APP.version}
-          </Text>
-          <Text size="xs" c="dimmed">
-            ·
-          </Text>
-          <Text size="xs" c="dimmed">
-            {APP.license}
-          </Text>
-        </Group>
-      </Stack>
-    </Center>
+        <Text size="1" color="gray" mt="3">
+          v{APP.version} · {APP.license}
+        </Text>
+      </Flex>
+    </Flex>
   );
 }

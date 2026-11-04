@@ -1,14 +1,7 @@
-import {
-  Button,
-  Group,
-  NumberInput,
-  Paper,
-  Radio,
-  Stack,
-  Text,
-} from "@mantine/core";
+import { Box, Card, Flex, Text, TextField } from "@radix-ui/themes";
 import { Shuffle } from "@phosphor-icons/react";
 import { LabelRow } from "../../components/LabelRow";
+import { OptionTile } from "../../components/PickerField";
 import { HELP } from "../../lib/wizard-config";
 import type { OrderBy } from "../../lib/types";
 import type { Quiz } from "../../state/useQuiz";
@@ -21,76 +14,71 @@ const ORDERS: { value: OrderBy; label: string; desc: string }[] = [
 
 export function OrderStep({ quiz }: { quiz: Quiz }) {
   const count =
-    quiz.order === "random" && quiz.pickN > 0
-      ? Math.min(quiz.pickN, quiz.total)
-      : quiz.total;
+    quiz.order === "random" && quiz.pickN > 0 ? Math.min(quiz.pickN, quiz.total) : quiz.total;
 
   return (
-    <Stack gap="lg">
-      <div>
+    <Flex direction="column" gap="5">
+      <Box>
         <LabelRow text="排列顺序" help={HELP.order} required />
-        <Radio.Group
-          mt={8}
-          value={quiz.order}
-          onChange={(v) => quiz.setOrder(v as OrderBy)}
-        >
-          <Stack gap={8}>
-            {ORDERS.map((o) => (
-              <Radio.Card key={o.value} value={o.value} radius="md" p="sm">
-                <Group gap="sm" wrap="nowrap" align="center">
-                  <Radio.Indicator />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Text fw={600} size="sm">
-                      {o.label}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {o.desc}
-                    </Text>
-                  </div>
-                </Group>
-              </Radio.Card>
-            ))}
-          </Stack>
-        </Radio.Group>
-      </div>
+        <Flex direction="column" gap="2" mt="2">
+          {ORDERS.map((o) => (
+            <OptionTile
+              key={o.value}
+              selected={quiz.order === o.value}
+              title={o.label}
+              subtitle={o.desc}
+              onClick={() => quiz.setOrder(o.value)}
+            />
+          ))}
+        </Flex>
+      </Box>
 
       {quiz.order === "random" && (
-        <Paper withBorder radius="md" p="md">
-          <Stack gap="md">
-            <NumberInput
-              label={<LabelRow text="抽取数量" help={HELP.pickN} optional />}
-              value={quiz.pickN}
-              onChange={(v) => quiz.setPickN(Math.max(0, Number(v) || 0))}
-              min={0}
-              max={500}
-              suffix=" 条"
-              description="填 0 表示全部都要"
-            />
-            <Button
-              variant="light"
-              leftSection={<Shuffle size={18} />}
-              onClick={() =>
-                quiz.setSeed((s) => (s * 1103515245 + 12345) % 2147483647 || 1)
-              }
+        <Card size="2" variant="surface">
+          <Flex direction="column" gap="3">
+            <Box>
+              <LabelRow text="抽取数量" help={HELP.pickN} optional />
+              <Box mt="2">
+                <TextField.Root
+                  type="number"
+                  min={0}
+                  max={500}
+                  value={quiz.pickN}
+                  onChange={(e) => quiz.setPickN(Math.max(0, Number(e.currentTarget.value) || 0))}
+                  size="3"
+                  style={{ minHeight: 44 }}
+                />
+              </Box>
+              <Text size="1" color="gray" mt="1" style={{ display: "block" }}>
+                填 0 表示全部都要
+              </Text>
+            </Box>
+            <Text
+              size="2"
+              color="blue"
+              role="button"
+              style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}
+              onClick={() => quiz.setSeed((s) => (s * 1103515245 + 12345) % 2147483647 || 1)}
             >
+              <Shuffle size={16} />
               换一批
-            </Button>
-          </Stack>
-        </Paper>
+            </Text>
+          </Flex>
+        </Card>
       )}
 
-      <Text size="sm" c="dimmed">
+      <Text size="2" color="gray">
         这次会出{" "}
-        <Text span fw={700} c="brand.6">
+        <Text size="3" weight="bold" color="blue">
           {count}
         </Text>{" "}
         条
         {quiz.order === "random" && quiz.pickN > 0 && quiz.total > quiz.pickN && (
-          <Text span size="sm" c="dimmed">
-            （共命中 {quiz.total} 条，随机抽 {quiz.pickN} 条）
+          <Text size="2" color="gray">
+            （共命中 {quiz.total} 条）
           </Text>
         )}
       </Text>
-    </Stack>
+    </Flex>
   );
 }

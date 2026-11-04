@@ -33,8 +33,13 @@ class ShareArgs {
  * 导出文件的落地与分享。
  *
  * 用 MediaStore 而不是直接写路径：Android 10+ 的 scoped storage 会
- * 拒绝应用往公共 Download 目录直接写，MediaStore 是官方给的正路，
- * 而且写完后系统里确实能看到这个文件。
+ * 拒绝应用往公共 Download 目录直接写，MediaStore 是官方给的正路。
+ *
+ * 注意 API 差异（minSdk 是 24）：
+ *   - API 29+：MediaStore.Downloads + RELATIVE_PATH + IS_PENDING
+ *   - API 24-28：Downloads 这个类还不存在，只能走外部存储目录直接写，
+ *     再用 MediaScanner 通知媒体库
+ * 直接引用 MediaStore.Downloads.* 在旧版本上会崩，所以必须分版本。
  */
 @TauriPlugin
 class SaveSharePlugin(private val activity: Activity) : Plugin(activity) {
@@ -52,61 +57,89 @@ class SaveSharePlugin(private val activity: Activity) : Plugin(activity) {
                 return
             }
 
-            val resolver = activity.contentResolver
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, args.fileName)
-                put(MediaStore.Downloads.MIME_TYPE, args.mime)
-                // 放进子目录，免得和用户的其它下载混在一起
-                put(
-                    MediaStore.Downloads.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOWNLOADS + "/" + folder
-                )
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-
-            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                writeModern(src, args)
             } else {
-                // API 24-28 没有 Downloads 集合，退回媒体库的通用 Files
-                @Suppress("DEPRECATION")
-                MediaStore.Files.getContentUri("external")
+                writeLegacy(src, args)
             }
-
-            val uri: Uri = resolver.insert(collection, values)
-                ?: run {
-                    invoke.reject("系统拒绝创建文件")
-                    return
-                }
-
-            try {
-                resolver.openOutputStream(uri)?.use { out ->
-                    src.inputStream().use { it.copyTo(out) }
-                } ?: run {
-                    resolver.delete(uri, null, null)
-                    invoke.reject("无法写入目标文件")
-                    return
-                }
-            } catch (e: Exception) {
-                resolver.delete(uri, null, null)
-                throw e
-            }
-
-            values.clear()
-            values.put(MediaStore.Downloads.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
 
             val result = JSObject()
-            // 给用户看的路径。Android 不允许应用拿到真实的公共路径，
-            // 但「下载/Easy Words/文件名」这个说法用户能照着找到。
-            result.put(
-                "displayPath",
-                "Download/$folder/${args.fileName}"
-            )
+            result.put("displayPath", "Download/$folder/${args.fileName}")
             result.put("uri", uri.toString())
             invoke.resolve(result)
         } catch (ex: Exception) {
             invoke.reject(ex.message ?: "保存失败")
         }
+    }
+
+    /** API 29+：MediaStore.Downloads + RELATIVE_PATH，不需要任何权限 */
+    private fun writeModern(src: File, args: SaveFileArgs): Uri {
+        val resolver = activity.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, args.fileName)
+            put(MediaStore.Downloads.MIME_TYPE, args.mime)
+            put(
+                MediaStore.Downloads.RELATIVE_PATH,
+                Environment.DIRECTORY_DOWNLOADS + "/" + folder
+            )
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("系统拒绝创建文件")
+
+        try {
+            resolver.openOutputStream(uri)?.use { out ->
+                src.inputStream().use { it.copyTo(out) }
+            } ?: throw IllegalStateException("无法写入目标文件")
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw e
+        }
+
+        values.clear()
+        values.put(MediaStore.Downloads.IS_PENDING, 0)
+        resolver.update(uri, values, null, null)
+        return uri
+    }
+
+    /** API 24-28：没有 Downloads 集合，直接写公共下载目录 */
+    @Suppress("DEPRECATION")
+    private fun writeLegacy(src: File, args: SaveFileArgs): Uri {
+        // 老系统写公共目录需要这个权限。没给就说清楚，而不是抛个看不懂的 IO 异常。
+        if (activity.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            throw SecurityException("需要存储权限才能保存到下载目录，请在系统设置里授予")
+        }
+
+        val dir = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            folder
+        )
+        if (!dir.exists() && !dir.mkdirs()) {
+            throw IllegalStateException("无法创建目录 ${dir.absolutePath}")
+        }
+
+        // 同名文件加序号，免得连着导出两次时后一次把前一次顶掉
+        var target = File(dir, args.fileName)
+        val base = args.fileName.substringBeforeLast('.')
+        val ext = args.fileName.substringAfterLast('.', "")
+        var i = 1
+        while (target.exists()) {
+            target = File(dir, "$base($i).$ext")
+            i++
+        }
+
+        src.inputStream().use { input ->
+            target.outputStream().use { output -> input.copyTo(output) }
+        }
+
+        // 让媒体库知道有新文件，否则文件管理器里要重启才看得到
+        android.media.MediaScannerConnection.scanFile(
+            activity, arrayOf(target.absolutePath), arrayOf(args.mime), null
+        )
+        return Uri.fromFile(target)
     }
 
     @Command
