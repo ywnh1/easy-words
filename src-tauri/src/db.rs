@@ -525,7 +525,7 @@ mod tests {
     #[test]
     #[ignore]
     fn sample_pdfs() {
-        use crate::pdf::{Field, Hint, Mode, Spec};
+        use crate::content::{Field, Hint, Mode, Spec};
         let con = seed_conn("samples");
         let f = Filter {
             book_ids: vec!["waiyanshe-required-1".into()],
@@ -585,6 +585,58 @@ mod tests {
         for (name, sp) in cases {
             let bytes = crate::pdf::render(&entries, &sp).unwrap();
             std::fs::write(out.join(format!("{name}.pdf")), bytes).unwrap();
+        }
+    }
+
+    /// 生成 docx 样例，供解压检查内容用。
+    /// cargo test -- --ignored sample_docx
+    #[test]
+    #[ignore]
+    fn sample_docx() {
+        use crate::content::{Field, Hint, Mode, Spec};
+        let con = seed_conn("docxsamples");
+        let f = Filter {
+            book_ids: vec!["waiyanshe-required-1".into()],
+            units: vec![1],
+            ..Default::default()
+        };
+        let entries = query(&con, &f, None).unwrap();
+        let out = std::path::Path::new("/tmp/samples-docx");
+        std::fs::create_dir_all(out).unwrap();
+
+        let spec = |mode: Mode| Spec {
+            mode,
+            answer_key: true,
+            subtitle: Some("外研社 必修第一册 · UNIT 1".into()),
+            ..Default::default()
+        };
+
+        let mut cases: Vec<(String, Spec)> = Vec::new();
+        let mut s = spec(Mode::Columns);
+        s.fields = vec![Field::Word, Field::Phonetic, Field::Meaning, Field::Blank];
+        cases.push(("四选4-单词表".into(), s));
+
+        let mut s = spec(Mode::Columns);
+        s.fields = vec![Field::Meaning, Field::Blank];
+        cases.push(("四选2-中译英".into(), s));
+
+        let mut s = spec(Mode::Sentence);
+        s.hint = Some(Hint::Zh);
+        cases.push(("句子-中文提示".into(), s));
+
+        let mut s = spec(Mode::Cloze);
+        s.pool = Some(8);
+        s.blanks = Some(6);
+        cases.push(("选词填空".into(), s));
+
+        let mut s = spec(Mode::Notes);
+        s.sense_sources = vec!["textbook".into(), "oxford_high".into()];
+        s.example_sources = vec!["oxford".into(), "own".into()];
+        cases.push(("笔记".into(), s));
+
+        for (name, sp) in cases {
+            let bytes = crate::docx::render(&entries, &sp).unwrap();
+            std::fs::write(out.join(format!("{name}.docx")), bytes).unwrap();
         }
     }
 

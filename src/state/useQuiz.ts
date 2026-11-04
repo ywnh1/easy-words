@@ -5,12 +5,13 @@
  * filter / spec 由这些状态派生，预览和导出共用同一份，避免两边口径不一致。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { catalog, countEntries, exportPdf, openPath, preview as fetchPreview } from "../lib/api";
+import { catalog, countEntries, exportDocument, openPath, preview as fetchPreview } from "../lib/api";
 import type {
   BookInfo,
   EntryView,
   Field,
   Filter,
+  Format,
   Hint,
   Mode,
   OrderBy,
@@ -80,6 +81,7 @@ export function useQuiz() {
   const [exampleSources, setExampleSources] = useState<string[]>([]);
   const [answerKey, setAnswerKey] = useState(true);
   const [title, setTitle] = useState("");
+  const [format, setFormat] = useState<Format>("pdf");
 
   const [preview, setPreview] = useState<EntryView[]>([]);
   const [total, setTotal] = useState(0);
@@ -203,7 +205,7 @@ export function useQuiz() {
     setBusy(true);
     setMsg(null);
     try {
-      const res = await exportPdf(filter, spec);
+      const res = await exportDocument(filter, spec, format);
       setMsg({ ok: true, text: `已生成 ${res.count} 题 → ${res.path}` });
       try {
         await openPath(res.path);
@@ -217,7 +219,7 @@ export function useQuiz() {
     } finally {
       setBusy(false);
     }
-  }, [filter, spec]);
+  }, [filter, spec, format]);
 
   return {
     // 数据
@@ -276,6 +278,8 @@ export function useQuiz() {
     setAnswerKey,
     title,
     setTitle,
+    format,
+    setFormat,
     // 导出
     spec,
     subtitle,

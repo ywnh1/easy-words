@@ -79,7 +79,15 @@ export type Spec = {
   subtitle?: string;
 };
 
+/** 导出格式 */
+export type Format = "pdf" | "docx";
+
 export type ExportResult = { path: string; count: number };
+
+export const FORMAT_LABEL: Record<Format, string> = {
+  pdf: "PDF",
+  docx: "Word (.docx)",
+};
 
 export const FIELD_LABEL: Record<Field, string> = {
   word: "英文",

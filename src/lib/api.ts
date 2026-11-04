@@ -8,7 +8,7 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { openPath as tauriOpenPath } from "@tauri-apps/plugin-opener";
-import type { BookInfo, EntryView, ExportResult, Filter, Spec } from "./types";
+import type { BookInfo, EntryView, ExportResult, Filter, Format, Spec } from "./types";
 
 /** 跑在 Tauri 窗口里吗 */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -125,14 +125,18 @@ export async function countEntries(filter: Filter): Promise<number> {
   return invoke<number>("count_entries", { filter });
 }
 
-export async function exportPdf(filter: Filter, spec: Spec): Promise<ExportResult> {
+export async function exportDocument(
+  filter: Filter,
+  spec: Spec,
+  format: Format,
+): Promise<ExportResult> {
   if (!inTauri) {
     throw new Error(
-      "这是纯前端预览版，没有 Rust 后端，无法生成 PDF。" +
+      `这是纯前端预览版，没有 Rust 后端，无法生成 ${format.toUpperCase()}。` +
         "完整功能请在桌面或安卓客户端里使用。",
     );
   }
-  return invoke<ExportResult>("export_pdf", { filter, spec });
+  return invoke<ExportResult>("export_document", { filter, spec, format });
 }
 
 export async function openPath(path: string): Promise<void> {

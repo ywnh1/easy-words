@@ -1,4 +1,6 @@
+mod content;
 mod db;
+mod docx;
 mod pdf;
 
 use serde::Serialize;
@@ -42,11 +44,13 @@ fn count_entries(state: State<'_, AppState>, filter: db::Filter) -> Result<usize
 }
 
 #[tauri::command]
-fn export_pdf(
+fn export_document(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     filter: db::Filter,
-    spec: pdf::Spec,
+    spec: content::Spec,
+    // pdf / docx
+    format: Option<String>,
     dir: Option<String>,
 ) -> Result<ExportResult, String> {
     let con = db::open(&state.db_path).map_err(|e| e.to_string())?;
@@ -55,23 +59,28 @@ fn export_pdf(
         return Err("筛选结果为空，没有可出的题".into());
     }
     // 句子 / 选词填空离不开例句，先剔除没有例句的词条
-    if matches!(spec.mode, pdf::Mode::Sentence | pdf::Mode::Cloze) {
+    if matches!(spec.mode, content::Mode::Sentence | content::Mode::Cloze) {
         entries.retain(|e| !e.examples.is_empty());
         if entries.is_empty() {
             return Err("选中的词都没有例句，无法出句子题。可以改用其他题型，或缩小范围。".into());
         }
     }
-    if spec.mode == pdf::Mode::Columns && spec.fields.is_empty() {
+    if spec.mode == content::Mode::Columns && spec.fields.is_empty() {
         return Err("请至少选择一列".into());
     }
-    let bytes = pdf::render(&entries, &spec)?;
+    let docx = format.as_deref() == Some("docx");
+    let bytes = if docx {
+        docx::render(&entries, &spec)?
+    } else {
+        pdf::render(&entries, &spec)?
+    };
 
     let out_dir = match dir {
         Some(d) if !d.trim().is_empty() => PathBuf::from(d),
         _ => default_dir(&app),
     };
     std::fs::create_dir_all(&out_dir).map_err(|e| format!("无法创建目录 {out_dir:?}: {e}"))?;
-    let path = out_dir.join(file_name(spec.mode));
+    let path = out_dir.join(file_name(spec.mode, docx));
     std::fs::write(&path, &bytes).map_err(|e| format!("写入失败 {path:?}: {e}"))?;
 
     Ok(ExportResult {
@@ -106,7 +115,7 @@ fn writable(dir: &std::path::Path) -> bool {
     true
 }
 
-fn file_name(mode: pdf::Mode) -> String {
+fn file_name(mode: content::Mode, docx: bool) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -122,12 +131,13 @@ fn file_name(mode: pdf::Mode) -> String {
         ((secs + 8 * 3600) % 3600) / 60,
     );
     let tag = match mode {
-        pdf::Mode::Columns => "columns",
-        pdf::Mode::Sentence => "sentence",
-        pdf::Mode::Cloze => "cloze",
-        pdf::Mode::Notes => "notes",
+        content::Mode::Columns => "columns",
+        content::Mode::Sentence => "sentence",
+        content::Mode::Cloze => "cloze",
+        content::Mode::Notes => "notes",
     };
-    format!("easywords-{tag}-{stamp}.pdf")
+    let ext = if docx { "docx" } else { "pdf" };
+    format!("easywords-{tag}-{stamp}.{ext}")
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -148,7 +158,7 @@ pub fn run() {
             catalog,
             preview,
             count_entries,
-            export_pdf
+            export_document
         ])
         .run(tauri::generate_context!())
         .expect("启动失败");

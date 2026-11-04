@@ -6,6 +6,7 @@ import {
   Group,
   Paper,
   ScrollArea,
+  SegmentedControl,
   Select,
   Stack,
   Switch,
@@ -14,7 +15,14 @@ import {
   TextInput,
 } from "@mantine/core";
 import { LabelRow } from "../../components/LabelRow";
-import { HINT_LABEL, SENSE_LABEL, type Hint, type SenseSource } from "../../lib/types";
+import {
+  FORMAT_LABEL,
+  HINT_LABEL,
+  SENSE_LABEL,
+  type Format,
+  type Hint,
+  type SenseSource,
+} from "../../lib/types";
 import { HELP } from "../../lib/wizard-config";
 import type { Quiz } from "../../state/useQuiz";
 
@@ -207,6 +215,25 @@ export function ExportStep({ quiz }: { quiz: Quiz }) {
         </Alert>
       )}
 
+      <div>
+        <LabelRow text="导出格式" help={HELP.format} />
+        <SegmentedControl
+          fullWidth
+          mt={6}
+          value={quiz.format}
+          onChange={(v) => quiz.setFormat(v as Format)}
+          data={[
+            { value: "pdf", label: FORMAT_LABEL.pdf },
+            { value: "docx", label: FORMAT_LABEL.docx },
+          ]}
+        />
+        <Text size="xs" c="dimmed" mt={4}>
+          {quiz.format === "docx"
+            ? "Word 文档可以直接在 WPS / Office 里改题、加减题，再打印。"
+            : "PDF 版式固定，打印出来最整齐。"}
+        </Text>
+      </div>
+
       <Button
         size="md"
         fullWidth
@@ -214,7 +241,7 @@ export function ExportStep({ quiz }: { quiz: Quiz }) {
         disabled={quiz.total === 0}
         onClick={() => quiz.doExport()}
       >
-        生成 PDF
+        生成 {FORMAT_LABEL[quiz.format]}
       </Button>
     </Stack>
   );
