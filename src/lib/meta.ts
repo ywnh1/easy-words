@@ -7,7 +7,7 @@ export const APP = {
   license: "MIT",
   licenseUrl: "https://opensource.org/licenses/MIT",
   /** 仓库地址。建库后填，例如 https://github.com/<user>/easy-words */
-  repo: "",
+  repo: "https://github.com/ywnh1/easy-words",
   /** Issue 地址。留空时由 repo 推导。 */
   issues: "",
   author: "ywnh1",

@@ -66,7 +66,13 @@ const wait = (ms = 400) => new Promise((r) => setTimeout(r, ms));
 await wait(900);
 
 const doc = dom.window.document;
-const bodyText = () => doc.body.textContent ?? "";
+// 注意：内联的 <script> 也在 body 里，它的源码含有界面上会出现的字符串
+// （比如组件里写死的「待填写」），直接取 textContent 会误判。
+const bodyText = () => {
+  const c = doc.body.cloneNode(true);
+  c.querySelectorAll("style,script").forEach((n) => n.remove());
+  return c.textContent ?? "";
+};
 
 const problems = [];
 const clickText = async (label, sel = "button") => {
@@ -95,6 +101,13 @@ if (await clickText("关于")) {
   expect(t.includes("MIT"), "关于页缺少开源协议");
   expect(t.includes("源代码"), "关于页缺少仓库地址一栏");
   expect(t.includes("问题反馈"), "关于页缺少 issue 地址一栏");
+  // 仓库地址填上之后，应该是可点的链接而不是「待填写」
+  const links = [...doc.querySelectorAll('a[href]')].map((a) => a.getAttribute("href") ?? "");
+  expect(
+    links.some((h) => h.includes("github.com")),
+    `关于页没有 GitHub 链接：${links.join(", ")}`,
+  );
+  expect(!t.includes("待填写"), "关于页仍有「待填写」的占位");
   await clickText("← 返回首页");
 } else {
   problems.push("点不开「关于」");
