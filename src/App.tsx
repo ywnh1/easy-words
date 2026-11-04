@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Box, Text } from "@mantine/core";
+import { Box, Text } from "@mantine/core";
+import { Info } from "@phosphor-icons/react";
 import { Wizard } from "./components/Wizard";
 import { About } from "./pages/About";
 import { Home } from "./pages/Home";
@@ -13,18 +14,30 @@ export default function App() {
   return (
     <Box mih="100dvh">
       {!inTauri && (
-        <Alert
-          color="yellow"
-          variant="light"
-          radius={0}
-          py={6}
-          px="md"
-          styles={{ body: { padding: 0 }, label: { padding: 0 } }}
+        <Box
+          className="safe-top"
+          style={{
+            background: "var(--mantine-color-yellow-light)",
+            color: "var(--mantine-color-yellow-light-color)",
+          }}
         >
-          <Text size="xs" ta="center" c="yellow.9">
-            界面预览版：数据是真实词库的一小部分，配置与预览可用，生成 PDF 需要桌面或安卓客户端。
-          </Text>
-        </Alert>
+          <Box
+            px="md"
+            py={6}
+            style={{
+              display: "flex",
+              gap: 6,
+              alignItems: "flex-start",
+              maxWidth: 560,
+              margin: "0 auto",
+            }}
+          >
+            <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <Text size="xs" lh={1.4}>
+              界面预览版：数据是真实词库的一小部分，配置与预览可用，生成文档需要桌面或安卓客户端。
+            </Text>
+          </Box>
+        </Box>
       )}
 
       {page === "home" && (

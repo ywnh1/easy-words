@@ -5,9 +5,6 @@
 
 @theme {
   --color-bg: oklch(0.99 0.003 250);
-  --color-panel: oklch(1 0 0);
-  --color-ink: oklch(0.22 0.01 250);
-  --color-line: oklch(0.91 0.005 250);
 }
 
 html,
@@ -18,14 +15,55 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-bg);
-  color: var(--color-ink);
-  font-family: system-ui, -apple-system, "Noto Sans SC", "Segoe UI", sans-serif;
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  /* 触控优化：去掉 300ms 点击延迟 */
+  touch-action: manipulation;
 }
 
 /* 移动端点击不要有高亮块 */
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * 安全区。Android 状态栏 / 手势条、iOS 刘海都靠这四个变量避让。
+ * 底部操作栏单独留出 home indicator 的高度。
+ */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-top {
+  padding-top: var(--safe-top);
+}
+.safe-bottom {
+  padding-bottom: var(--safe-bottom);
+}
+.safe-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* 底部固定操作栏：内容区要留出同样高度的空白，否则最后一项被盖住 */
+.action-bar {
+  padding-bottom: calc(12px + var(--safe-bottom));
+  padding-left: calc(16px + var(--safe-left));
+  padding-right: calc(16px + var(--safe-right));
+}
+
+/* 尊重系统的「减少动效」设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -72,10 +72,34 @@ Word 用宋体 + Times New Roman，不依赖额外字体。
 - **关于**：版本号、开源协议、仓库地址、Issue 地址。
 
 组件库用 [Mantine](https://mantine.dev) v9（`@mantine/core` + `@mantine/hooks`）：
-`Stepper` 做步骤条、`Modal` 做说明弹窗、`MultiSelect`/`Chip`/`SegmentedControl`/`NumberInput`
-等做表单控件。Tailwind 只留作布局与少量微调 ——
-`src/index.css` 开头声明了 `@layer mantine, theme, base, components, utilities`，
-让 Tailwind 的工具类能覆盖 Mantine 的默认样式；Mantine 侧用 `styles.layer.css`。
+`Modal` 做说明弹窗、`MultiSelect`/`Chip`/`Radio.Card`/`SegmentedControl`/`NumberInput`
+等做表单控件。图标统一用 [Phosphor](https://phosphoricons.com)（`@phosphor-icons/react`），
+不用 emoji 或字符箭头 —— 字符在不同系统上字重和宽度都不一致。
+
+Tailwind 只留作布局与少量微调：`src/index.css` 开头声明了
+`@layer mantine, theme, base, components, utilities`，让 Tailwind 的工具类能覆盖
+Mantine 的默认样式；Mantine 侧用 `styles.layer.css`。
+
+### 移动端优先的取舍
+
+这个应用主要在手机上用，所以：
+
+- **触控尺寸**：主题里把 Button / ActionIcon / Checkbox / Chip 的最小尺寸统一抬到 44px。
+  Mantine 默认 md 是 36px，手指点不准。
+- **底部固定操作栏**：上一步 / 下一步固定在屏幕底部，不用滚到底才找得到；
+  内容区留出 `calc(96px + var(--safe-bottom))` 的空白，最后一项不会被盖住。
+- **进度条代替步名**：五步的完整 Stepper 在 375px 屏上必然换行断字，
+  改成「当前步名 + 一条进度条 + 3/5」。
+- **卡片代替表格**：预览列表原来是表格，手机上几列会被挤成竖条；
+  改成一词一张卡片，词形、音标、释义分三层。
+- **安全区**：`env(safe-area-inset-*)` 通过 `.safe-top` / `.safe-bottom` / `.safe-x` 应用，
+  底部操作栏单独留 home indicator 的高度。
+- **深色模式**：跟随系统，`ColorSchemeScript` 把首帧配色写进 `<head>`，避免先闪白底。
+  颜色全部走 Mantine 语义 token，不写死十六进制。
+- **减少动效**：`prefers-reduced-motion` 下把过渡压到 0.01ms。
+
+主色取应用图标上那支笔的蓝（`#3b82f6`），不是套模板的紫 —— 图标和界面用同一套色，
+看起来才是一个东西。
 
 版本号只有一个来源：`package.json`，由 `vite.config.ts` 的 `define` 注入成 `__APP_VERSION__`。
 仓库地址等元信息在 `src/lib/meta.ts`，建好仓库后填 `repo` 字段即可，
@@ -193,5 +217,6 @@ src-tauri/       Rust：
   lib.rs         Tauri 命令
   resources/     seed.sqlite（编译产物，随二进制内嵌）
   assets/fonts/  子集字体
+  icons/         npx tauri icon 生成的全套图标（含 android/mipmap-*）
   keystore/      Android 签名
 ```

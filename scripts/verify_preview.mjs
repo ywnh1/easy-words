@@ -108,7 +108,8 @@ if (await clickText("关于")) {
     `关于页没有 GitHub 链接：${links.join(", ")}`,
   );
   expect(!t.includes("待填写"), "关于页仍有「待填写」的占位");
-  await clickText("← 返回首页");
+  // 关于页的返回改成了图标按钮（aria-label），不再有文字
+  await clickText("返回首页");
 } else {
   problems.push("点不开「关于」");
 }
@@ -153,11 +154,11 @@ if (!(await clickText("开始出题"))) {
   );
   expect(!!nextBtn, "找不到「下一步」按钮");
   expect(nextBtn?.disabled === true, "教材一个都没选时「下一步」仍可点（必填校验失效）");
-  expect(bodyText().includes("还没选教材"), "没选教材时没有提示");
+  expect(bodyText().includes("至少选一本书"), "没选教材时没有提示");
 
   // 把教材重新选回来，后续步骤才走得下去
   const openSelect = [...doc.querySelectorAll("input")].find((n) =>
-    (n.getAttribute("placeholder") ?? "").includes("选择至少一本书"),
+    (n.getAttribute("placeholder") ?? "").includes("选一本或多本"),
   );
   if (openSelect) {
     openSelect.focus();
@@ -203,7 +204,7 @@ if (!(await clickText("开始出题"))) {
     expect(t5.includes("中文释义来源"), "最后一步缺少中文来源设置");
     expect(t5.includes("预览"), "最后一步缺少预览");
     expect(t5.includes("senior"), `预览里没有真实词条：${t5.slice(-300)}`);
-    expect(t5.includes("生成 PDF"), "最后一步缺少生成按钮");
+    expect(t5.includes("生成文档"), "最后一步缺少生成按钮");
   }
 
   expect(await clickText("上一步"), "「上一步」点不到");

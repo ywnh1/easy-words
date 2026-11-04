@@ -2,35 +2,66 @@ import {
   Alert,
   Anchor,
   Chip,
+  Divider,
   Group,
   MultiSelect,
   Stack,
   Text,
   TextInput,
 } from "@mantine/core";
+import { Info } from "@phosphor-icons/react";
 import { LabelRow } from "../../components/LabelRow";
 import { HELP } from "../../lib/wizard-config";
 import type { Quiz } from "../../state/useQuiz";
 
-const MARKER_OPTIONS = [
+const MARKERS = [
   { value: "none", label: "普通词" },
   { value: "star", label: "加星 *" },
   { value: "box", label: "方框 □" },
 ];
 
+/** 一组配置：小标题 + 控件。组与组之间用 Divider 断开。 */
+function Field({
+  label,
+  help,
+  required,
+  optional,
+  children,
+}: {
+  label: string;
+  help: React.ReactNode;
+  required?: boolean;
+  optional?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <LabelRow text={label} help={help} required={required} optional={optional} />
+      <div style={{ marginTop: 8 }}>{children}</div>
+    </div>
+  );
+}
+
 export function ScopeStep({ quiz }: { quiz: Quiz }) {
   const bookOptions = quiz.books.map((b) => ({
     value: b.id,
-    label: `${b.volume || b.title}（${b.total}）`,
+    label: `${b.volume || b.title} · ${b.total} 词`,
   }));
+
+  const resetFilters = () => {
+    quiz.setUnits([]);
+    quiz.setInitials([]);
+    quiz.setMarkers([]);
+    quiz.setKinds([]);
+    quiz.setPagesText("");
+    quiz.setQuery("");
+  };
 
   return (
     <Stack gap="lg">
       <MultiSelect
-        label={
-          <LabelRow text="教材" help={HELP.books} required />
-        }
-        placeholder={quiz.bookIds.length ? undefined : "选择至少一本书"}
+        label={<LabelRow text="教材" help={HELP.books} required />}
+        placeholder={quiz.bookIds.length ? undefined : "点这里选一本或多本"}
         data={bookOptions}
         value={quiz.bookIds}
         onChange={(v) => {
@@ -38,7 +69,6 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
           quiz.setUnits([]);
           quiz.setInitials([]);
         }}
-        description="可多选；后两步的筛选都在这几本书之内"
         searchable={false}
         hidePickedOptions={false}
         nothingFoundMessage="没有可选的教材"
@@ -46,115 +76,111 @@ export function ScopeStep({ quiz }: { quiz: Quiz }) {
       />
 
       {quiz.bookIds.length === 0 && (
-        <Alert color="yellow" variant="light" title="还没选教材">
-          至少选一本书才能出题。上面选好之后，「下一步」才会亮起。
+        <Alert color="yellow" variant="light" icon={<Info size={18} />}>
+          至少选一本书才能出题
         </Alert>
       )}
 
-      <div>
-        <LabelRow text="单元" help={HELP.units} optional />
-        <Chip.Group multiple value={quiz.units.map(String)} onChange={(v) => quiz.setUnits(v.map(Number))}>
-          <Group gap={6} mt={6}>
+      <Divider />
+
+      <Field label="单元" help={HELP.units} optional>
+        <Chip.Group
+          multiple
+          value={quiz.units.map(String)}
+          onChange={(v) => quiz.setUnits(v.map(Number))}
+        >
+          <Group gap={8}>
             {quiz.allUnits.map((u) => (
-              <Chip key={u} value={String(u)} size="sm" variant="light">
-                UNIT {u}
+              <Chip key={u} value={String(u)} variant="light" radius="md">
+                {u}
               </Chip>
             ))}
             {quiz.allUnits.length === 0 && (
-              <Text size="xs" c="dimmed">
+              <Text size="sm" c="dimmed">
                 先选教材
               </Text>
             )}
           </Group>
         </Chip.Group>
-      </div>
+      </Field>
 
-      <TextInput
-        label={<LabelRow text="页码" help={HELP.pages} optional />}
-        placeholder="例如 12, 15-20"
-        value={quiz.pagesText}
-        onChange={(e) => quiz.setPagesText(e.currentTarget.value)}
-        description="支持单个页码与区间，逗号或空格分隔；留空表示不限"
-      />
-
-      <div>
-        <LabelRow text="首字母" help={HELP.initials} optional />
-        <Chip.Group
-          multiple
-          value={quiz.initials}
-          onChange={(v) => quiz.setInitials(v)}
-        >
-          <Group gap={4} mt={6}>
+      <Field label="首字母" help={HELP.initials} optional>
+        <Chip.Group multiple value={quiz.initials} onChange={quiz.setInitials}>
+          <Group gap={6}>
             {quiz.allInitials.map(([ch]) => (
-              <Chip key={ch} value={ch} size="xs" variant="light" tt="uppercase" radius="sm">
+              <Chip
+                key={ch}
+                value={ch}
+                variant="light"
+                radius="md"
+                tt="uppercase"
+                styles={{
+                  label: { paddingInline: 0, minWidth: 40, justifyContent: "center" },
+                }}
+              >
                 {ch}
               </Chip>
             ))}
           </Group>
         </Chip.Group>
-      </div>
+      </Field>
 
-      <div>
-        <LabelRow text="词汇标记" help={HELP.markers} optional />
-        <Chip.Group
-          multiple
-          value={quiz.markers}
-          onChange={(v) => quiz.setMarkers(v)}
-        >
-          <Group gap={6} mt={6}>
-            {MARKER_OPTIONS.map((o) => (
-              <Chip key={o.value} value={o.value} size="sm" variant="light">
-                {o.label}
-                {quiz.markerCount[o.value] ? (
-                  <Text span size="xs" c="dimmed" ml={4}>
-                    {quiz.markerCount[o.value]}
-                  </Text>
-                ) : null}
+      <Field label="词汇标记" help={HELP.markers} optional>
+        <Chip.Group multiple value={quiz.markers} onChange={quiz.setMarkers}>
+          <Group gap={8}>
+            {MARKERS.map((m) => (
+              <Chip key={m.value} value={m.value} variant="light" radius="md">
+                {m.label}
+                {quiz.markerCount[m.value] ? ` · ${quiz.markerCount[m.value]}` : ""}
               </Chip>
             ))}
           </Group>
         </Chip.Group>
-      </div>
+      </Field>
 
-      <div>
-        <LabelRow text="词条类型" help={HELP.kinds} optional />
+      <Field label="词条类型" help={HELP.kinds} optional>
         <Chip.Group
           multiple
           value={quiz.kinds}
           onChange={(v) => quiz.setKinds(v as ("word" | "phrase")[])}
         >
-          <Group gap={6} mt={6}>
-            <Chip value="word" size="sm" variant="light">
+          <Group gap={8}>
+            <Chip value="word" variant="light" radius="md">
               只单词
             </Chip>
-            <Chip value="phrase" size="sm" variant="light">
+            <Chip value="phrase" variant="light" radius="md">
               只短语
             </Chip>
           </Group>
         </Chip.Group>
-      </div>
+      </Field>
+
+      <Divider />
+
+      <TextInput
+        label={<LabelRow text="页码" help={HELP.pages} optional />}
+        placeholder="12, 15-20"
+        value={quiz.pagesText}
+        onChange={(e) => quiz.setPagesText(e.currentTarget.value)}
+      />
 
       <TextInput
         label={<LabelRow text="指定单词" help={HELP.query} optional />}
         placeholder="mood, campus, senior"
         value={quiz.query}
         onChange={(e) => quiz.setQuery(e.currentTarget.value)}
-        description="逗号或换行分隔，支持部分匹配；留空表示不额外限制"
       />
 
-      <Text size="xs" c="dimmed">
-        当前条件命中 <b>{quiz.total}</b> 条
+      <Text size="sm" c="dimmed">
+        当前条件命中{" "}
+        <Text span fw={700} c="brand.6">
+          {quiz.total}
+        </Text>{" "}
+        条
         {quiz.total === 0 && (
           <>
-            {" —— "}
-            <Anchor component="button" type="button" size="xs" onClick={() => {
-              quiz.setUnits([]);
-              quiz.setInitials([]);
-              quiz.setMarkers([]);
-              quiz.setKinds([]);
-              quiz.setPagesText("");
-              quiz.setQuery("");
-            }}>
+            {" · "}
+            <Anchor component="button" type="button" size="sm" onClick={resetFilters}>
               清空筛选
             </Anchor>
           </>

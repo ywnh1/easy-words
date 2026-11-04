@@ -1,6 +1,6 @@
 import {
+  ActionIcon,
   Alert,
-  Button,
   Checkbox,
   Divider,
   Group,
@@ -10,10 +10,10 @@ import {
   Select,
   Stack,
   Switch,
-  Table,
   Text,
   TextInput,
 } from "@mantine/core";
+import { CaretDown, CaretUp, CheckCircle, Warning } from "@phosphor-icons/react";
 import { LabelRow } from "../../components/LabelRow";
 import {
   FORMAT_LABEL,
@@ -41,65 +41,171 @@ function SenseOrder({ quiz }: { quiz: Quiz }) {
   return (
     <div>
       <LabelRow text="中文释义来源" help={HELP.senseSources} required />
-      <Text size="xs" c="dimmed" mt={2} mb={6}>
-        排在前面的优先；这个词在该来源没有释义时自动用下一个
+      <Text size="sm" c="dimmed" mt={2} mb={8}>
+        排在前面的优先，没有就自动用下一个
       </Text>
-      <Paper withBorder radius="sm">
-        <Table verticalSpacing="xs" horizontalSpacing="sm">
-          <Table.Tbody>
-            {quiz.senseAll.map((s: SenseSource, i) => (
-              <Table.Tr key={s}>
-                <Table.Td w={34}>
-                  <Checkbox
-                    checked={quiz.senseOn[s]}
-                    onChange={(e) =>
-                      quiz.setSenseOn({ ...quiz.senseOn, [s]: e.currentTarget.checked })
-                    }
-                    aria-label={`启用${SENSE_LABEL[s]}`}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <Text size="sm" c={quiz.senseOn[s] ? undefined : "dimmed"}>
-                    {i + 1}. {SENSE_LABEL[s]}
-                  </Text>
-                </Table.Td>
-                <Table.Td w={64}>
-                  <Group gap={0} justify="flex-end" wrap="nowrap">
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      disabled={i === 0}
-                      onClick={() => move(i, i - 1)}
-                      aria-label="上移"
-                      px={6}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      disabled={i === quiz.senseAll.length - 1}
-                      onClick={() => move(i, i + 1)}
-                      aria-label="下移"
-                      px={6}
-                    >
-                      ↓
-                    </Button>
-                  </Group>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
-      </Paper>
+
+      <Stack gap={8}>
+        {quiz.senseAll.map((s: SenseSource, i) => {
+          const on = quiz.senseOn[s];
+          return (
+            <Paper
+              key={s}
+              withBorder
+              radius="md"
+              px="sm"
+              py={6}
+              style={{ opacity: on ? 1 : 0.55 }}
+            >
+              <Group gap="sm" wrap="nowrap">
+                <Checkbox
+                  checked={on}
+                  onChange={(e) =>
+                    quiz.setSenseOn({ ...quiz.senseOn, [s]: e.currentTarget.checked })
+                  }
+                  aria-label={`启用${SENSE_LABEL[s]}`}
+                />
+                <Text size="md" style={{ flex: 1 }} c={on ? undefined : "dimmed"}>
+                  {SENSE_LABEL[s]}
+                </Text>
+                <Text size="xs" c="dimmed" style={{ fontVariantNumeric: "tabular-nums" }}>
+                  {i + 1}
+                </Text>
+                <Group gap={0} wrap="nowrap">
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    disabled={i === 0}
+                    onClick={() => move(i, i - 1)}
+                    aria-label="上移"
+                  >
+                    <CaretUp size={18} />
+                  </ActionIcon>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    disabled={i === quiz.senseAll.length - 1}
+                    onClick={() => move(i, i + 1)}
+                    aria-label="下移"
+                  >
+                    <CaretDown size={18} />
+                  </ActionIcon>
+                </Group>
+              </Group>
+            </Paper>
+          );
+        })}
+      </Stack>
     </div>
+  );
+}
+
+/** 预览：卡片列表。手机上表格列会被挤成竖条，读不出东西。 */
+function Preview({ quiz }: { quiz: Quiz }) {
+  if (quiz.preview.length === 0) {
+    return (
+      <Paper withBorder radius="md" p="lg">
+        <Text size="sm" c="dimmed" ta="center">
+          {quiz.total === 0 ? "当前筛选没有命中，回上一步放宽条件" : "加载中…"}
+        </Text>
+      </Paper>
+    );
+  }
+
+  return (
+    <>
+      <ScrollArea.Autosize mah={360} type="auto" offsetScrollbars>
+        <Stack gap={6}>
+          {quiz.preview.map((e, i) => {
+            const key = e.word.toLowerCase();
+            return (
+              <Paper key={`${key}-${i}`} withBorder radius="sm" px="sm" py={8}>
+                <Group gap="sm" wrap="nowrap" align="flex-start">
+                  <Text
+                    size="xs"
+                    c="dimmed"
+                    w={20}
+                    ta="right"
+                    style={{ flexShrink: 0, fontVariantNumeric: "tabular-nums", paddingTop: 3 }}
+                  >
+                    {i + 1}
+                  </Text>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Group gap={6} wrap="wrap">
+                      <Text size="md" fw={600}>
+                        {e.word}
+                      </Text>
+                      {e.phonetic && (
+                        <Text size="sm" c="dimmed">
+                          {e.phonetic}
+                        </Text>
+                      )}
+                    </Group>
+                    <Text size="sm" c="dimmed" lineClamp={2} mt={2}>
+                      {e.meaning}
+                    </Text>
+                  </div>
+                  {quiz.mode === "sentence" && (
+                    <Select
+                      size="xs"
+                      w={100}
+                      value={quiz.overrides[key] ?? ""}
+                      onChange={(v) => {
+                        const next = { ...quiz.overrides };
+                        if (!v) delete next[key];
+                        else next[key] = v as Hint;
+                        quiz.setOverrides(next);
+                      }}
+                      data={[
+                        { value: "", label: "跟随全局" },
+                        ...ALL_HINTS.map((h) => ({ value: h, label: HINT_LABEL[h] })),
+                      ]}
+                      allowDeselect={false}
+                      comboboxProps={{ withinPortal: true }}
+                      style={{ flexShrink: 0 }}
+                    />
+                  )}
+                </Group>
+              </Paper>
+            );
+          })}
+        </Stack>
+      </ScrollArea.Autosize>
+
+      {quiz.total > quiz.preview.length && (
+        <Text size="sm" c="dimmed" ta="center" mt={8}>
+          仅显示前 {quiz.preview.length} 条，导出会包含全部 {quiz.total} 条
+        </Text>
+      )}
+    </>
   );
 }
 
 export function ExportStep({ quiz }: { quiz: Quiz }) {
   return (
     <Stack gap="lg">
-      <SenseOrder quiz={quiz} />
+      {/* 导出格式放最前：这是最后一步，用户最关心的就是"导成什么" */}
+      <div>
+        <LabelRow text="导出格式" help={HELP.format} required />
+        <SegmentedControl
+          fullWidth
+          mt={8}
+          size="md"
+          value={quiz.format}
+          onChange={(v) => quiz.setFormat(v as Format)}
+          data={[
+            { value: "pdf", label: FORMAT_LABEL.pdf },
+            { value: "docx", label: FORMAT_LABEL.docx },
+          ]}
+        />
+        <Text size="sm" c="dimmed" mt={8}>
+          {quiz.format === "docx"
+            ? "Word 可以在 WPS / Office 里改题、加减条目，再打印。"
+            : "PDF 版式固定，打印出来最整齐，但不好再改。"}
+        </Text>
+      </div>
+
+      <Divider />
 
       <TextInput
         label={<LabelRow text="卷头标题" help={HELP.title} optional />}
@@ -110,139 +216,51 @@ export function ExportStep({ quiz }: { quiz: Quiz }) {
       />
 
       {quiz.mode === "notes" ? (
-        <Alert color="gray" variant="light" title="笔记模式固定没有答案页">
-          它本身就是完整的对照材料。
+        <Alert color="gray" variant="light">
+          笔记模式固定没有答案页
         </Alert>
       ) : (
-        <div>
-          <LabelRow text="参考答案" help={HELP.answerKey} />
-          <Switch
-            mt={6}
-            checked={quiz.answerKey}
-            onChange={(e) => quiz.setAnswerKey(e.currentTarget.checked)}
-            label="在卷子最后附一页答案"
-            description={
-              quiz.mode === "columns" && !quiz.fields.includes("blank")
-                ? "当前没有「默写」列，即使打开也不会生成答案页"
-                : undefined
-            }
-          />
-        </div>
+        <Switch
+          checked={quiz.answerKey}
+          onChange={(e) => quiz.setAnswerKey(e.currentTarget.checked)}
+          label="在卷子最后附一页答案"
+          description={
+            quiz.mode === "columns" && !quiz.fields.includes("blank")
+              ? "当前没有「默写」列，打开也不会生成答案页"
+              : undefined
+          }
+          styles={{ label: { fontSize: "var(--mantine-font-size-md)" } }}
+        />
       )}
 
       <Divider />
 
+      <SenseOrder quiz={quiz} />
+
+      <Divider />
+
       <div>
-        <Group justify="space-between" align="center" mb={4}>
-          <LabelRow text={`预览 · 命中 ${quiz.total} 条`} help={HELP.preview} />
-        </Group>
-
-        <ScrollArea.Autosize mah={320} type="auto" offsetScrollbars>
-          {quiz.preview.length === 0 ? (
-            <Text size="sm" c="dimmed" ta="center" py="lg">
-              {quiz.total === 0 ? "当前筛选没有命中，回上一步放宽条件" : "加载中…"}
-            </Text>
-          ) : (
-            <Table verticalSpacing={4} horizontalSpacing="sm" fz="sm">
-              <Table.Tbody>
-                {quiz.preview.map((e, i) => {
-                  const key = e.word.toLowerCase();
-                  return (
-                    <Table.Tr key={`${key}-${i}`}>
-                      <Table.Td w={30} c="dimmed" fz="xs" ta="right">
-                        {i + 1}
-                      </Table.Td>
-                      <Table.Td w="auto" style={{ whiteSpace: "nowrap" }}>
-                        <Text span fw={500} size="sm">
-                          {e.word}
-                        </Text>
-                        {e.phonetic && (
-                          <Text span size="xs" c="dimmed" ml={6}>
-                            {e.phonetic}
-                          </Text>
-                        )}
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" lineClamp={1}>
-                          {e.meaning}
-                        </Text>
-                      </Table.Td>
-                      {quiz.mode === "sentence" && (
-                        <Table.Td w={96}>
-                          <Select
-                            size="xs"
-                            value={quiz.overrides[key] ?? ""}
-                            onChange={(v) => {
-                              const next = { ...quiz.overrides };
-                              if (!v) delete next[key];
-                              else next[key] = v as Hint;
-                              quiz.setOverrides(next);
-                            }}
-                            data={[
-                              { value: "", label: "跟随全局" },
-                              ...ALL_HINTS.map((h) => ({ value: h, label: HINT_LABEL[h] })),
-                            ]}
-                            allowDeselect={false}
-                            comboboxProps={{ withinPortal: true }}
-                          />
-                        </Table.Td>
-                      )}
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-          )}
-        </ScrollArea.Autosize>
-
-        {quiz.total > quiz.preview.length && (
-          <Text size="xs" c="dimmed" ta="center" mt={6}>
-            仅显示前 {quiz.preview.length} 条，PDF 会包含全部 {quiz.total} 条
-          </Text>
-        )}
+        <LabelRow text={`预览 · 本次出 ${quiz.total} 条`} help={HELP.preview} />
+        <div style={{ marginTop: 8 }}>
+          <Preview quiz={quiz} />
+        </div>
       </div>
 
       {quiz.msg && (
         <Alert
           color={quiz.msg.ok ? "green" : "red"}
           variant="light"
+          icon={
+            quiz.msg.ok ? <CheckCircle size={20} /> : <Warning size={20} />
+          }
           onClose={() => quiz.setMsg(null)}
           withCloseButton
         >
-          <Text size="xs" style={{ wordBreak: "break-all" }}>
+          <Text size="sm" style={{ wordBreak: "break-all", lineHeight: 1.5 }}>
             {quiz.msg.text}
           </Text>
         </Alert>
       )}
-
-      <div>
-        <LabelRow text="导出格式" help={HELP.format} />
-        <SegmentedControl
-          fullWidth
-          mt={6}
-          value={quiz.format}
-          onChange={(v) => quiz.setFormat(v as Format)}
-          data={[
-            { value: "pdf", label: FORMAT_LABEL.pdf },
-            { value: "docx", label: FORMAT_LABEL.docx },
-          ]}
-        />
-        <Text size="xs" c="dimmed" mt={4}>
-          {quiz.format === "docx"
-            ? "Word 文档可以直接在 WPS / Office 里改题、加减题，再打印。"
-            : "PDF 版式固定，打印出来最整齐。"}
-        </Text>
-      </div>
-
-      <Button
-        size="md"
-        fullWidth
-        loading={quiz.busy}
-        disabled={quiz.total === 0}
-        onClick={() => quiz.doExport()}
-      >
-        生成 {FORMAT_LABEL[quiz.format]}
-      </Button>
     </Stack>
   );
 }

@@ -1,10 +1,11 @@
-import { Badge, Group, Text } from "@mantine/core";
+import { Group, Text } from "@mantine/core";
 import { Help } from "./Help";
 
 /**
- * 字段标签：名称 + 必填/选填标记 + 问号。
+ * 字段标签：名称 + 必填/选填 + 问号。
  *
- * 作为 Mantine 各输入组件的 label 属性传入，外观和原生标签一致。
+ * 作为 Mantine 各输入组件的 label 属性传入。
+ * 用文字而不是彩色徽章标必填：徽章多了会变成一排色块，反而干扰阅读。
  */
 export function LabelRow({
   text,
@@ -18,12 +19,12 @@ export function LabelRow({
   optional?: boolean;
 }) {
   return (
-    <Group gap={6} wrap="nowrap" component="span">
+    <Group gap={6} wrap="nowrap" component="span" align="center">
       <span>{text}</span>
       {required && (
-        <Badge size="xs" variant="light" color="indigo" tt="none">
+        <Text span size="xs" fw={500} c="brand.6">
           必填
-        </Badge>
+        </Text>
       )}
       {optional && (
         <Text span size="xs" c="dimmed">

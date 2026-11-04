@@ -1,35 +1,26 @@
 import {
+  ActionIcon,
   Anchor,
-  Badge,
-  Button,
-  Container,
+  Box,
   Divider,
   Group,
   Paper,
   Stack,
-  Table,
   Text,
   Title,
 } from "@mantine/core";
+import { ArrowLeft, GithubLogo } from "@phosphor-icons/react";
 import { APP, issuesUrl, repoUrl } from "../lib/meta";
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
+/** 一行信息：标签在上，值在下。手机上比两列表格好读。 */
+function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <Table.Tr>
-      <Table.Td w={120} c="dimmed" fz="sm">
+    <Box>
+      <Text size="xs" c="dimmed" mb={2}>
         {label}
-      </Table.Td>
-      <Table.Td fz="sm">{children}</Table.Td>
-    </Table.Tr>
-  );
-}
-
-/** 待填写的链接统一显示成灰色提示，而不是死链。 */
-function Pending({ hint }: { hint: string }) {
-  return (
-    <Text span size="sm" c="dimmed">
-      待填写 <Text span size="xs">（{hint}）</Text>
-    </Text>
+      </Text>
+      {children}
+    </Box>
   );
 }
 
@@ -38,94 +29,100 @@ export function About({ onBack }: { onBack: () => void }) {
   const issues = issuesUrl();
 
   return (
-    <Container size="sm" py="xl">
-      <Group justify="space-between" mb="lg">
-        <Title order={2} fz="xl">
-          关于
-        </Title>
-        <Button variant="subtle" size="sm" onClick={onBack}>
-          ← 返回首页
-        </Button>
-      </Group>
-
-      <Paper withBorder radius="md" p="lg">
-        <Stack gap={4} mb="md">
-          <Title order={3} fz="lg">
-            {APP.name}
+    <Box className="safe-top safe-bottom safe-x" mih="100dvh">
+      <Box px="md" py="sm">
+        <Group gap="xs" wrap="nowrap" mb="md">
+          <ActionIcon variant="subtle" color="gray" onClick={onBack} aria-label="返回首页">
+            <ArrowLeft size={22} />
+          </ActionIcon>
+          <Title order={2} fz="lg">
+            关于
           </Title>
-          <Text size="sm" c="dimmed">
-            {APP.tagline}
+        </Group>
+
+        <Stack gap="md" maw={560} mx="auto">
+          <Paper withBorder radius="lg" p="lg">
+            <Stack gap="xs" mb="md">
+              <Title order={3} fz="xl">
+                {APP.name}
+              </Title>
+              <Text size="sm" c="dimmed">
+                {APP.tagline}
+              </Text>
+              <Text size="sm" c="dimmed">
+                版本 v{APP.version}
+              </Text>
+            </Stack>
+
+            <Divider mb="md" />
+
+            <Stack gap="md">
+              <Item label="开源协议">
+                <Anchor href={APP.licenseUrl} target="_blank" rel="noreferrer" size="sm">
+                  {APP.license}
+                </Anchor>
+                <Text size="xs" c="dimmed" mt={2}>
+                  可自由使用、修改、分发，需保留版权声明
+                </Text>
+              </Item>
+
+              <Item label="源代码">
+                {repo ? (
+                  <Anchor
+                    href={repo}
+                    target="_blank"
+                    rel="noreferrer"
+                    size="sm"
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                  >
+                    <GithubLogo size={16} />
+                    {repo.replace(/^https?:\/\//, "")}
+                  </Anchor>
+                ) : (
+                  <Text size="sm" c="dimmed">
+                    待填写
+                  </Text>
+                )}
+              </Item>
+
+              <Item label="问题反馈">
+                {issues ? (
+                  <Anchor href={issues} target="_blank" rel="noreferrer" size="sm">
+                    {issues.replace(/^https?:\/\//, "")}
+                  </Anchor>
+                ) : (
+                  <Text size="sm" c="dimmed">
+                    待填写
+                  </Text>
+                )}
+              </Item>
+
+              <Item label="作者">
+                <Text size="sm">{APP.author}</Text>
+              </Item>
+
+              <Divider />
+
+              <Item label="词库来源">
+                <Text size="sm" lh={1.6}>
+                  外研社《高中英语》必修第一、二、三册与选择性必修第一册
+                </Text>
+              </Item>
+
+              <Item label="例句来源">
+                <Text size="sm" lh={1.6}>
+                  牛津高阶英汉双解、柯林斯 COBUILD，以及按高中水平自撰的补充例句
+                </Text>
+              </Item>
+            </Stack>
+          </Paper>
+
+          <Text size="xs" c="dimmed" px="xs" lh={1.7}>
+            本应用仅用于学习与教学。教材词汇表由扫描件转录，「例句」「释义」等内容的著作权归原出版方所有，
+            请勿用于商业用途。如权利人认为有不妥之处，请通过上方的问题反馈联系。
           </Text>
         </Stack>
-
-        <Table variant="vertical" withRowBorders>
-          <Table.Tbody>
-            <Row label="版本">
-              <Group gap={6}>
-                <Text span ff="monospace" size="sm">
-                  v{APP.version}
-                </Text>
-                <Badge size="xs" variant="light">
-                  alpha
-                </Badge>
-              </Group>
-            </Row>
-
-            <Row label="开源协议">
-              <Anchor href={APP.licenseUrl} target="_blank" rel="noreferrer" size="sm">
-                {APP.license}
-              </Anchor>
-              <Text span size="xs" c="dimmed" ml={6}>
-                （可自由使用、修改、分发，需保留版权声明）
-              </Text>
-            </Row>
-
-            <Row label="源代码">
-              {repo ? (
-                <Anchor href={repo} target="_blank" rel="noreferrer" size="sm">
-                  {repo}
-                </Anchor>
-              ) : (
-                <Pending hint="仓库创建后填写 src/lib/meta.ts 的 repo" />
-              )}
-            </Row>
-
-            <Row label="问题反馈">
-              {issues ? (
-                <Anchor href={issues} target="_blank" rel="noreferrer" size="sm">
-                  {issues}
-                </Anchor>
-              ) : (
-                <Pending hint="仓库创建后自动由 repo 推导" />
-              )}
-            </Row>
-
-            <Row label="作者">{APP.author}</Row>
-
-            <Row label="词库来源">
-              <Text size="sm">外研社《高中英语》必修第一、二、三册与选择性必修第一册</Text>
-            </Row>
-
-            <Row label="例句来源">
-              <Text size="sm">牛津高阶英汉双解、柯林斯 COBUILD，以及按高中水平自撰的补充例句</Text>
-            </Row>
-          </Table.Tbody>
-        </Table>
-
-        <Divider my="md" />
-
-        <Text size="xs" c="dimmed" style={{ lineHeight: 1.7 }}>
-          本应用仅用于学习与教学。教材词汇表由扫描件转录，「例句」「释义」等内容的著作权
-          归原出版方所有，请勿用于商业用途。如果权利人认为有不妥之处，请通过上方的问题反馈
-          联系，我会及时处理。
-        </Text>
-      </Paper>
-
-      <Group justify="center" mt="xl">
-        <Button variant="default" onClick={onBack}>
-          返回首页
-        </Button>
-      </Group>
-    </Container>
+      </Box>
+    </Box>
   );
 }
