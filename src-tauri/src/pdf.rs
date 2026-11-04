@@ -15,8 +15,8 @@ use std::io::BufWriter;
 
 use crate::db::EntryView;
 use crate::content::{
-    blank_of, fill_blank, find_target, has_answer, hint_mark, label_of, pick_cloze, pick_zh,
-    pick_zh_all, sentence_item, split_at_target, title_of, Field, Hint, Mode, Spec,
+    blank_of, has_answer, hint_mark, label_of, pick_zh, pick_zh_all, plan_cloze,
+    sentence_item, spec_seed, split_at_target, title_of, ClozePlan, Field, Hint, Mode, Spec,
     SOURCE_LABEL,
 };
 
@@ -311,17 +311,17 @@ pub fn render(entries: &[EntryView], spec: &Spec) -> Result<Vec<u8>, String> {
     let mut s = Sheet::new(title.clone())?;
     header_block(&mut s, &title, spec)?;
 
-    // 选词填空的选项与题目只洗一次牌，答案页沿用同一组下标，
-    // 否则两边各自随机，答案与题号就对不上了
-    let mut cloze_pick: Option<(Vec<usize>, Vec<usize>)> = None;
+    // 选词填空的选项与题目只规划一次，答案页沿用同一份方案，
+    // 否则两边各自随机，答案与题号就对不上
+    let mut cloze_plan: Option<ClozePlan> = None;
 
     match spec.mode {
         Mode::Columns => render_columns(&mut s, entries, spec)?,
         Mode::Sentence => render_sentences(&mut s, entries, spec)?,
         Mode::Cloze => {
-            let pick = pick_cloze(entries, spec);
-            render_cloze(&mut s, entries, &pick)?;
-            cloze_pick = Some(pick);
+            let plan = plan_cloze(entries, spec);
+            render_cloze(&mut s, entries, &plan)?;
+            cloze_plan = Some(plan);
         }
         Mode::Notes => render_notes(&mut s, entries, spec)?,
     }
@@ -336,8 +336,8 @@ pub fn render(entries: &[EntryView], spec: &Spec) -> Result<Vec<u8>, String> {
             Mode::Columns => answer_columns(&mut s, entries, spec)?,
             Mode::Sentence => answer_sentences(&mut s, entries, spec)?,
             Mode::Cloze => {
-                if let Some((_, items)) = &cloze_pick {
-                    answer_cloze(&mut s, entries, items)?;
+                if let Some(plan) = &cloze_plan {
+                    answer_cloze(&mut s, entries, plan)?;
                 }
             }
             Mode::Notes => {}
@@ -525,13 +525,15 @@ fn draw_marked_line(s: &Sheet, parts: &[(bool, String)], size: f32, x: f32, y: f
 }
 
 fn render_sentences(s: &mut Sheet, entries: &[EntryView], spec: &Spec) -> Result<(), String> {
+    let seed = spec_seed(spec);
     let mut items = Vec::new();
     for e in entries.iter() {
-        if let Some((shown, en, range)) = sentence_item(e, spec.hint_for(e), &spec.sense_sources) {
-            items.push((shown, en, range));
+        if let Some(item) = sentence_item(e, spec.hint_for(e), &spec.sense_sources, seed) {
+            items.push(item);
         }
     }
-    for (n, (shown, _en, _range)) in items.iter().enumerate() {
+    for (n, item) in items.iter().enumerate() {
+        let shown = &item.shown;
         let lines = s.wrap(shown, SIZE, CW - 8.0, false);
         let need = lines.len() as f32 * 6.0 + 4.0;
         s.ensure(need)?;
@@ -548,14 +550,15 @@ fn render_sentences(s: &mut Sheet, entries: &[EntryView], spec: &Spec) -> Result
 }
 
 fn answer_sentences(s: &mut Sheet, entries: &[EntryView], spec: &Spec) -> Result<(), String> {
+    // 必须和题面用同一个种子，否则答案页给的是另一句
+    let seed = spec_seed(spec);
     let mut n = 0usize;
     for e in entries.iter() {
-        let Some((_shown, en, range)) = sentence_item(e, spec.hint_for(e), &spec.sense_sources)
-        else {
+        let Some(item) = sentence_item(e, spec.hint_for(e), &spec.sense_sources, seed) else {
             continue;
         };
         n += 1;
-        draw_answer_sentence(s, n, &en, range, &e.word)?;
+        draw_answer_sentence(s, n, &item.original, item.range, &e.word)?;
     }
     Ok(())
 }
@@ -585,12 +588,9 @@ fn draw_answer_sentence(
 
 // ---------------------------------------------------------------- 选词填空
 
-fn render_cloze(
-    s: &mut Sheet,
-    entries: &[EntryView],
-    pick: &(Vec<usize>, Vec<usize>),
-) -> Result<(), String> {
-    let (options, items) = pick;
+fn render_cloze(s: &mut Sheet, entries: &[EntryView], plan: &ClozePlan) -> Result<(), String> {
+    let options = &plan.options;
+    let items = &plan.items;
     if options.is_empty() || items.is_empty() {
         return Ok(());
     }
@@ -613,16 +613,10 @@ fn render_cloze(
     }
     s.y = top + box_h + 8.0;
 
-    for (n, idx) in items.iter().enumerate() {
-        let e = &entries[*idx];
-        let Some(en) = e.examples.first().map(|x| x.en.clone()) else {
-            continue;
-        };
-        // 选词填空的句子不给任何提示，只有空
-        let Some((shown, _)) = fill_blank(&en, &e.word, &"_".repeat(12), "") else {
-            continue;
-        };
-        let lines = s.wrap(&shown, SIZE, CW - 8.0, false);
+    // 句子已在 plan 里准备好，题面与答案共用，不再各自取第一条例句
+    for (n, item) in items.iter().enumerate() {
+        let shown = &item.sentence.shown;
+        let lines = s.wrap(shown, SIZE, CW - 8.0, false);
         let need = lines.len() as f32 * 6.4 + 4.0;
         s.ensure(need)?;
         let y = s.y;
@@ -660,22 +654,12 @@ fn wrap_options(s: &Sheet, entries: &[EntryView], options: &[usize]) -> Vec<Stri
     lines
 }
 
-fn answer_cloze(
-    s: &mut Sheet,
-    entries: &[EntryView],
-    items: &[usize],
-) -> Result<(), String> {
+fn answer_cloze(s: &mut Sheet, entries: &[EntryView], plan: &ClozePlan) -> Result<(), String> {
     let mut n = 0usize;
-    for idx in items {
-        let e = &entries[*idx];
-        let Some(en) = e.examples.first().map(|x| x.en.clone()) else {
-            continue;
-        };
-        let Some(range) = find_target(&en.to_lowercase(), &e.word.to_lowercase()) else {
-            continue;
-        };
+    for item in &plan.items {
+        let e = &entries[item.entry];
         n += 1;
-        draw_answer_sentence(s, n, &en, range, &e.word)?;
+        draw_answer_sentence(s, n, &item.sentence.original, item.sentence.range, &e.word)?;
     }
     Ok(())
 }
@@ -806,6 +790,7 @@ mod tests {
             blanks: None,
             sense_sources: vec![],
             example_sources: vec![],
+            seed: 1,
             answer_key: true,
             title: None,
             subtitle: Some("测试卷".into()),
@@ -841,12 +826,14 @@ mod tests {
         let mark = hint_mark(Hint::Zh, &item, &[]);
         assert!(mark.starts_with('【') && mark.ends_with('】'), "{mark}");
         assert!(!mark.contains("（【"), "{mark}");
-        let (shown, _, _) = sentence_item(
+        let item = sentence_item(
             &e("wind up", "给（机械）上发条", "", "He began to wind up the clock."),
             Hint::Zh,
             &[],
+            1,
         )
         .unwrap();
+        let shown = item.shown;
         // 释义自带的括号被清掉，提示只剩【】一种括号
         assert!(shown.contains("【给机械上发条】"), "{shown}");
         assert!(!shown.contains("（"), "提示里不该再有圆括号：{shown}");
@@ -854,12 +841,14 @@ mod tests {
 
     #[test]
     fn blank_handles_inflection() {
-        let (shown, _, _) = sentence_item(
+        let item = sentence_item(
             &e("smile", "微笑", "", "She was smiling at me."),
             Hint::None,
             &[],
+            1,
         )
         .unwrap();
+        let shown = item.shown;
         assert!(shown.starts_with("She was ____________"), "{shown}");
     }
 
@@ -1024,19 +1013,21 @@ mod tests {
                 answer_key: false,
                 ..Default::default()
             };
-            let (options, items) = pick_cloze(&entries, &spec);
-            assert_eq!(options.len(), pool, "选项数应为 pool");
-            assert_eq!(items.len(), blanks, "句子数应为 blanks");
+            let plan = plan_cloze(&entries, &spec);
+            assert_eq!(plan.options.len(), pool, "选项数应为 pool");
+            assert_eq!(plan.items.len(), blanks, "句子数应为 blanks");
             // 每题考的词必须出现在选项里
-            for i in &items {
+            for item in &plan.items {
                 assert!(
-                    options.contains(i),
-                    "第 {i} 条是题目但不在选项里：{options:?}"
+                    plan.options.contains(&item.entry),
+                    "第 {} 条是题目但不在选项里：{:?}",
+                    item.entry,
+                    plan.options
                 );
             }
             // 选项不能有重复
-            let uniq: std::collections::HashSet<_> = options.iter().collect();
-            assert_eq!(uniq.len(), options.len(), "选项有重复");
+            let uniq: std::collections::HashSet<_> = plan.options.iter().collect();
+            assert_eq!(uniq.len(), plan.options.len(), "选项有重复");
         }
     }
 
@@ -1054,11 +1045,128 @@ mod tests {
             blanks: Some(2),
             ..Default::default()
         };
-        let (options, items) = pick_cloze(&entries, &spec);
-        assert!(!options.contains(&0), "无例句的条目不该出现在选项里");
-        assert!(!items.contains(&0), "无例句的条目不该成为题目");
-        assert_eq!(options.len(), 2);
-        assert_eq!(items.len(), 2);
+        let plan = plan_cloze(&entries, &spec);
+        assert!(!plan.options.contains(&0), "无例句的条目不该出现在选项里");
+        assert!(
+            !plan.items.iter().any(|i| i.entry == 0),
+            "无例句的条目不该成为题目"
+        );
+        assert_eq!(plan.options.len(), 2);
+        assert_eq!(plan.items.len(), 2);
+    }
+
+    /// 选词填空要出的句子数必须和用户设定的完全一致。
+    ///
+    /// 之前的 bug：pick_cloze 只判断 examples 是否为空，但有些词
+    /// 在例句里根本找不到目标词（短语变体、词形变化超出规则），
+    /// 渲染时被 continue 跳过，于是题号断号、题量比设定少。
+    #[test]
+    fn cloze_item_count_matches_request() {
+        // 第 2 条例句里没有 "ghost"，挖空必然失败，必须被排除在外
+        let entries = vec![
+            entry_with_example("mood", "心情", "/muːd/", "Her mood improved."),
+            entry_with_example("ghost", "幽灵", "/ɡəʊst/", "Nothing was there."),
+            entry_with_example("smile", "微笑", "/smaɪl/", "She was smiling at me."),
+            entry_with_example("campus", "校园", "/ˈkæmpəs/", "The campus is large."),
+            entry_with_example("senior", "年长的", "/ˈsiːniə/", "He is a senior teacher."),
+        ];
+
+        for want in 1..=4usize {
+            for pool in want..=5usize {
+                let spec = Spec {
+                    mode: Mode::Cloze,
+                    pool: Some(pool),
+                    blanks: Some(want),
+                    seed: 7,
+                    ..Default::default()
+                };
+                let plan = plan_cloze(&entries, &spec);
+                assert_eq!(
+                    plan.items.len(),
+                    want,
+                    "要 {want} 句却只准备了 {} 句（pool={pool}）",
+                    plan.items.len()
+                );
+                // 每一句都必须真的挖了空
+                for item in &plan.items {
+                    assert!(
+                        item.sentence.shown.contains("____"),
+                        "句子没有空：{}",
+                        item.sentence.shown
+                    );
+                }
+                assert!(
+                    !plan.options.contains(&1),
+                    "挖不了空的词不该进选项"
+                );
+            }
+        }
+    }
+
+    /// 同一个种子必须选出同一批词和同一句例句，
+    /// 否则预览里看到的和导出的不是一份卷子。
+    #[test]
+    fn cloze_plan_is_reproducible() {
+        let entries: Vec<EntryView> = (0..10)
+            .map(|i| {
+                entry_with_example(
+                    &format!("word{i}"),
+                    "释义",
+                    "/wɜːd/",
+                    &format!("This is word{i} in a sentence."),
+                )
+            })
+            .collect();
+        let spec = Spec {
+            mode: Mode::Cloze,
+            pool: Some(6),
+            blanks: Some(4),
+            seed: 42,
+            ..Default::default()
+        };
+        let a = plan_cloze(&entries, &spec);
+        let b = plan_cloze(&entries, &spec);
+        assert_eq!(a.options, b.options);
+        let sa: Vec<&str> = a.items.iter().map(|i| i.sentence.shown.as_str()).collect();
+        let sb: Vec<&str> = b.items.iter().map(|i| i.sentence.shown.as_str()).collect();
+        assert_eq!(sa, sb);
+    }
+
+    /// 一个词有多条例句时，不同种子应该选到不同的句子。
+    #[test]
+    fn sentence_picks_vary_by_seed() {
+        use crate::db::Example;
+        let mut item = e("mood", "心情", "/muːd/", "Her mood improved.");
+        item.examples = vec![
+            Example {
+                en: "Her mood improved.".into(),
+                zh: String::new(),
+                source: "own".into(),
+                label: String::new(),
+            },
+            Example {
+                en: "The mood in the room was tense.".into(),
+                zh: String::new(),
+                source: "own".into(),
+                label: String::new(),
+            },
+            Example {
+                en: "I am in no mood for jokes.".into(),
+                zh: String::new(),
+                source: "own".into(),
+                label: String::new(),
+            },
+        ];
+
+        let mut picked = std::collections::HashSet::new();
+        for seed in 0..30u64 {
+            let it = sentence_item(&item, Hint::None, &[], seed).unwrap();
+            picked.insert(it.original);
+        }
+        assert!(
+            picked.len() >= 2,
+            "不同种子总是选中同一句：{picked:?}"
+        );
     }
 
     /// 笔记模式要把勾选的来源都列出来，并带上来源名。

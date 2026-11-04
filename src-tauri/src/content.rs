@@ -95,6 +95,10 @@ pub struct Spec {
     /// 笔记模式的例句来源；空表示不附例句
     #[serde(default)]
     pub example_sources: Vec<String>,
+    /// 随机种子：决定取哪条例句、选词填空挑哪些词。
+    /// 0 表示按时间取，前端可以传同一个种子让预览与导出一致。
+    #[serde(default)]
+    pub seed: u64,
     #[serde(default)]
     pub answer_key: bool,
     #[serde(default)]
@@ -146,6 +150,12 @@ pub fn pick_zh(e: &EntryView, sources: &[String]) -> String {
 }
 
 /// 笔记模式要列出多个来源，每个都带来源名。
+/// 笔记模式里每个来源最多列几条释义。
+///
+/// 牛津双解是同义词词典，一个词能抽出十几条碎片（大 / 老 / 上级 / 中学…），
+/// 全列出来会把一个词撑成二十行，反而看不出重点。三条足够覆盖主要义项。
+pub const MAX_SENSES_PER_SOURCE: usize = 3;
+
 pub fn pick_zh_all(e: &EntryView, sources: &[String]) -> Vec<(String, String)> {
     let order: Vec<String> = if sources.is_empty() {
         vec!["textbook".into()]
@@ -160,11 +170,35 @@ pub fn pick_zh_all(e: &EntryView, sources: &[String]) -> Vec<(String, String)> {
             }
             continue;
         }
+        let mut picked: Vec<String> = Vec::new();
         for s in e.senses.iter().filter(|s| &s.source == src && !s.zh.is_empty()) {
+            if picked.len() >= MAX_SENSES_PER_SOURCE {
+                break;
+            }
+            // 只在同一来源内部去重：「级别高」「级别高的」留一条。
+            // 不同来源之间不去重 —— 牛津和柯林斯说法相近恰恰可以互相对照。
+            if picked.iter().any(|prev| similar(prev, &s.zh)) {
+                continue;
+            }
+            picked.push(s.zh.clone());
             out.push((src.clone(), s.zh.clone()));
         }
     }
     out
+}
+
+/// 两条释义是不是几乎重复：去掉「的」和标点后相同，或一方包含另一方。
+fn similar(a: &str, b: &str) -> bool {
+    let norm = |t: &str| {
+        t.chars()
+            .filter(|c| !matches!(c, '的' | '；' | ';' | '，' | ',' | ' '))
+            .collect::<String>()
+    };
+    let (a, b) = (norm(a), norm(b));
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    a == b || a.contains(&b) || b.contains(&a)
 }
 
 pub const SOURCE_LABEL: fn(&str) -> &'static str = |src| match src {
@@ -314,11 +348,89 @@ pub fn find_target(haystack: &str, needle: &str) -> Option<(usize, usize)> {
 }
 
 /// 每个词条取第一条例句，并挖空；返回 (题面, 原句, 原句中的目标区间)
-pub fn sentence_item(e: &EntryView, hint: Hint, sources: &[String]) -> Option<(String, String, (usize, usize))> {
-    let en = e.examples.first()?.en.clone();
+/// 一道准备好的句子题。题面与答案共用同一句，不会出现两边挑不同句的情况。
+#[derive(Debug, Clone)]
+pub struct SentenceItem {
+    /// 挖空后的题面（含提示标记）
+    pub shown: String,
+    /// 原句，答案页用
+    pub original: String,
+    /// 目标词在原句中的字节区间，答案页用来高亮
+    pub range: (usize, usize),
+}
+
+/// 一个词条里"能用来出题"的例句：必须真的能挖到目标词。
+///
+/// 之前只看 examples 是否为空，导致 pick_cloze 选进来的词在渲染时
+/// 挖空失败被跳过，题号就断号、题量也对不上。
+pub fn usable_examples<'a>(e: &'a EntryView, hint: Hint) -> Vec<&'a crate::db::Example> {
+    let blank = blank_of(&e.word, hint);
+    e.examples
+        .iter()
+        .filter(|x| fill_blank(&x.en, &e.word, &blank, "").is_some())
+        .collect()
+}
+
+/// 从可用例句里按种子挑一条。同一个种子必得同一句，
+/// 所以预览与导出一致；换种子就换句子。
+pub fn pick_example<'a>(
+    e: &'a EntryView,
+    hint: Hint,
+    seed: u64,
+) -> Option<&'a crate::db::Example> {
+    let usable = usable_examples(e, hint);
+    if usable.is_empty() {
+        return None;
+    }
+    let idx = (mix_seed(seed ^ hash_word(&e.word)) % usable.len() as u64) as usize;
+    Some(usable[idx])
+}
+
+/// FNV-1a：把词形摊成一个数，让不同词落在不同的例句上
+fn hash_word(word: &str) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in word.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    h
+}
+
+/// splitmix64 的最后一轮，用来打散相邻种子
+pub fn mix_seed(seed: u64) -> u64 {
+    let mut x = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^ (x >> 31)
+}
+
+/// Spec 里的种子；0 表示按时间取
+pub fn spec_seed(spec: &Spec) -> u64 {
+    if spec.seed != 0 {
+        spec.seed
+    } else {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0x9E37_79B9_7F4A_7C15)
+    }
+}
+
+/// 准备一道句子题：随机取一条可用例句并挖空。
+pub fn sentence_item(
+    e: &EntryView,
+    hint: Hint,
+    sources: &[String],
+    seed: u64,
+) -> Option<SentenceItem> {
+    let ex = pick_example(e, hint, seed)?;
     let mark = hint_mark(hint, e, sources);
-    let (shown, range) = fill_blank(&en, &e.word, &blank_of(&e.word, hint), &mark)?;
-    Some((shown, en, range))
+    let (shown, range) = fill_blank(&ex.en, &e.word, &blank_of(&e.word, hint), &mark)?;
+    Some(SentenceItem {
+        shown,
+        original: ex.en.clone(),
+        range,
+    })
 }
 
 
@@ -329,24 +441,74 @@ pub fn label_of(i: usize) -> String {
     c.to_string()
 }
 
-pub fn pick_cloze(entries: &[EntryView], spec: &Spec) -> (Vec<usize>, Vec<usize>) {
-    let pool = spec.pool.unwrap_or(8).max(2);
-    let blanks = spec.blanks.unwrap_or(6).clamp(1, pool);
+/// 一道选词填空题：条目下标 + 已准备好的句子。
+pub struct ClozeItem {
+    pub entry: usize,
+    pub sentence: SentenceItem,
+}
 
-    let mut candidates: Vec<usize> = entries
+/// 一次选词填空的完整方案。
+///
+/// 题面与答案页都从这里取，所以「选项数」「句子数」「答案顺序」
+/// 天然一致 —— 之前渲染和答案各自调 pick_cloze，两边洗牌结果不同，
+/// 答案和题号对不上。
+pub struct ClozePlan {
+    /// 方框里的选项（entries 下标），含干扰项
+    pub options: Vec<usize>,
+    /// 下面的句子，顺序即题号
+    pub items: Vec<ClozeItem>,
+}
+
+/// 规划一次选词填空。
+///
+/// 关键点：候选必须真的能挖空。之前只判断 examples 是否为空，
+/// 结果某些词渲染时挖空失败被跳过，题号断号、题量比用户设定的少。
+pub fn plan_cloze(entries: &[EntryView], spec: &Spec) -> ClozePlan {
+    let pool = spec.pool.unwrap_or(8).max(2);
+    let want = spec.blanks.unwrap_or(6).clamp(1, pool);
+    let seed = spec_seed(spec);
+
+    // 只有真能挖空的词才配进选项
+    let mut usable: Vec<usize> = entries
         .iter()
         .enumerate()
-        .filter(|(_, e)| !e.examples.is_empty())
+        .filter(|(_, e)| !usable_examples(e, Hint::None).is_empty())
         .map(|(i, _)| i)
-        .take(pool)
         .collect();
 
-    let mut options = candidates.clone();
-    shuffle_slice(&mut options);
+    // 先用种子打散，再按顺序取，避免总是前几个词（教材前几页的）
+    shuffle_with_seed(&mut usable, mix_seed(seed));
 
-    candidates.truncate(blanks);
-    shuffle_slice(&mut candidates);
-    (options, candidates)
+    // 选项取前 pool 个；题目从选项里再取 want 个
+    let options: Vec<usize> = usable.iter().copied().take(pool).collect();
+    let mut quiz: Vec<usize> = options.clone();
+    shuffle_with_seed(&mut quiz, mix_seed(seed ^ 0x5DEE_CE66_D1CE_4E5B));
+
+    let mut items = Vec::new();
+    for idx in quiz.into_iter().take(want) {
+        let e = &entries[idx];
+        // 用同一个种子挑例句，题面与答案共用
+        if let Some(sentence) = sentence_item(e, Hint::None, &[], seed ^ hash_word(&e.word)) {
+            items.push(ClozeItem {
+                entry: idx,
+                sentence,
+            });
+        }
+    }
+
+    ClozePlan { options, items }
+}
+
+/// 用给定种子洗牌（同种子必得同一结果）
+pub fn shuffle_with_seed<T>(v: &mut [T], seed: u64) {
+    let mut s = mix_seed(seed) | 1;
+    for i in (1..v.len()).rev() {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        let j = (s % (i as u64 + 1)) as usize;
+        v.swap(i, j);
+    }
 }
 
 

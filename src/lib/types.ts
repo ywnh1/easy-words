@@ -70,6 +70,8 @@ export type Spec = {
   fields: Field[];
   hint?: Hint;
   overrides: Record<string, Hint>;
+  /** 随机种子：决定选哪条例句。与 filter.seed 保持一致，预览与导出才同卷 */
+  seed: number;
   pool?: number;
   blanks?: number;
   sense_sources: SenseSource[];

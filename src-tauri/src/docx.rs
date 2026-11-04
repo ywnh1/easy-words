@@ -10,8 +10,8 @@
 use docx_rs::*;
 
 use crate::content::{
-    blank_of, fill_blank, find_target, has_answer, hint_mark, label_of, pick_cloze, pick_zh,
-    pick_zh_all, sentence_item, split_at_target, title_of, Field, Mode, Spec, SOURCE_LABEL,
+    blank_of, has_answer, hint_mark, label_of, pick_zh, pick_zh_all, plan_cloze, sentence_item,
+    spec_seed, split_at_target, title_of, Field, Mode, Spec, SOURCE_LABEL,
 };
 use crate::db::{EntryView, Example};
 
@@ -178,23 +178,26 @@ fn columns(mut d: Doc, entries: &[EntryView], spec: &Spec) -> Doc {
 }
 
 fn sentences(mut d: Doc, entries: &[EntryView], spec: &Spec) -> Doc {
+    let seed = spec_seed(spec);
     let mut n = 0usize;
     for e in entries {
-        let Some((shown, _, _)) = sentence_item(e, spec.hint_for(e), &spec.sense_sources) else {
+        let Some(item) = sentence_item(e, spec.hint_for(e), &spec.sense_sources, seed) else {
             continue;
         };
         n += 1;
         d = d.para(
             Paragraph::new()
                 .add_run(text(format!("{n}. ")))
-                .add_run(text(shown)),
+                .add_run(text(item.shown)),
         );
     }
     d
 }
 
 fn cloze(mut d: Doc, entries: &[EntryView], spec: &Spec) -> Doc {
-    let (options, items) = pick_cloze(entries, spec);
+    let plan = plan_cloze(entries, spec);
+    let options = &plan.options;
+    let items = &plan.items;
     if options.is_empty() || items.is_empty() {
         return d;
     }
@@ -216,21 +219,11 @@ fn cloze(mut d: Doc, entries: &[EntryView], spec: &Spec) -> Doc {
         .set_borders(outer_borders()),
     );
 
-    let mut n = 0usize;
-    for idx in &items {
-        let e = &entries[*idx];
-        let Some(en) = e.examples.first().map(|x| x.en.clone()) else {
-            continue;
-        };
-        // 选词填空的句子不给任何提示，只有空
-        let Some((shown, _)) = fill_blank(&en, &e.word, &"_".repeat(12), "") else {
-            continue;
-        };
-        n += 1;
+    for (n, item) in items.iter().enumerate() {
         d = d.para(
             Paragraph::new()
-                .add_run(text(format!("{n}. ")))
-                .add_run(text(shown)),
+                .add_run(text(format!("{}. ", n + 1)))
+                .add_run(text(item.sentence.shown.clone())),
         );
     }
     d
@@ -326,30 +319,26 @@ fn answers(mut d: Doc, entries: &[EntryView], spec: &Spec) -> Doc {
             }
         }
         Mode::Sentence => {
+            // 和题面用同一个种子，否则答案给的是另一句
+            let seed = spec_seed(spec);
             let mut n = 0usize;
             for e in entries {
-                let Some((_, en, range)) =
-                    sentence_item(e, spec.hint_for(e), &spec.sense_sources)
+                let Some(item) = sentence_item(e, spec.hint_for(e), &spec.sense_sources, seed)
                 else {
                     continue;
                 };
                 n += 1;
-                d = d.para(answer_sentence(n, &en, range));
+                d = d.para(answer_sentence(n, &item.original, item.range));
             }
         }
         Mode::Cloze => {
-            let (_, items) = pick_cloze(entries, spec);
-            let mut n = 0usize;
-            for idx in items {
-                let e = &entries[idx];
-                let Some(en) = e.examples.first().map(|x| x.en.clone()) else {
-                    continue;
-                };
-                let Some(range) = find_target(&en.to_lowercase(), &e.word.to_lowercase()) else {
-                    continue;
-                };
-                n += 1;
-                d = d.para(answer_sentence(n, &en, range));
+            let plan = plan_cloze(entries, spec);
+            for (n, item) in plan.items.iter().enumerate() {
+                d = d.para(answer_sentence(
+                    n + 1,
+                    &item.sentence.original,
+                    item.sentence.range,
+                ));
             }
         }
         Mode::Notes => {}
@@ -437,6 +426,7 @@ mod tests {
             blanks: None,
             sense_sources: vec![],
             example_sources: vec![],
+            seed: 1,
             answer_key: true,
             title: None,
             subtitle: Some("测试卷".into()),
