@@ -15,7 +15,9 @@ use tauri::{Manager, Runtime, State};
 #[cfg(target_os = "android")]
 use tauri::plugin::PluginHandle;
 
-#[derive(Debug, Deserialize)]
+// Serialize 是必需的：run_mobile_plugin 要把参数序列化成 JSON 转给 Kotlin。
+// 这段代码只在 android 下编译，桌面 cargo check 看不到，容易漏。
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveFileArgs {
     /// 待保存的源文件绝对路径（应用沙盒内的临时文件）
@@ -26,7 +28,8 @@ pub struct SaveFileArgs {
     pub mime: String,
 }
 
-#[derive(Debug, Serialize)]
+// 返回值要从 Kotlin 反序列化回来，所以同时要 Deserialize
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveFileResult {
     /// 系统展示给用户的位置，例如「下载/Easy Words」
@@ -35,7 +38,7 @@ pub struct SaveFileResult {
     pub uri: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareArgs {
     pub uri: String,

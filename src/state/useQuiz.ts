@@ -161,6 +161,13 @@ export function useQuiz() {
     return [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [selectedBooks]);
 
+  /** 选中教材里出现过的页码，给页码选择器用 */
+  const allPages = useMemo(() => {
+    const set = new Set<number>();
+    selectedBooks.forEach((b) => b.pages.forEach((p) => set.add(Number(p.key))));
+    return [...set].sort((a, b) => a - b);
+  }, [selectedBooks]);
+
   const markerCount = useMemo(() => {
     const m: Record<string, number> = {};
     selectedBooks.forEach((b) =>
@@ -233,6 +240,7 @@ export function useQuiz() {
     selectedBooks,
     allUnits,
     allInitials,
+    allPages,
     markerCount,
     // 范围
     bookIds,

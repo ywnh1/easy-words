@@ -75,6 +75,8 @@ const bodyText = () => {
 };
 
 const problems = [];
+/** 记录实测到的规模，输出里带出来，方便判断断言是不是空跑 */
+const marks = { tiles: 0 };
 const clickText = async (label, sel = "button") => {
   const el = [...doc.querySelectorAll(sel)].find(
     (n) => n.textContent?.trim() === label || n.getAttribute("aria-label") === label,
@@ -120,7 +122,7 @@ if (!(await clickText("开始出题"))) {
 } else {
   const t1 = bodyText();
   expect(t1.includes("选词范围"), "向导第一步不是「选词范围」");
-  expect(t1.includes("必修第一册"), "第一步没有列出教材");
+  expect(t1.includes("教材"), "第一步没有教材选择器");
   expect(t1.includes("必填"), "第一步没有必填标记");
 
   // 问号 → 弹窗
@@ -143,37 +145,68 @@ if (!(await clickText("开始出题"))) {
     await wait(300);
   }
 
-  // 必填校验：把教材全删掉，「下一步」应被禁用并给出提示
-  let guard = 0;
-  while (doc.querySelector(".mantine-Pill-remove") && guard++ < 20) {
-    doc.querySelector(".mantine-Pill-remove").click();
-    await wait(150);
+  // 选择器：点开教材弹窗 → 逐个取消 → 校验必填
+  const pickerBtn = [...doc.querySelectorAll("button")].find((n) =>
+    (n.getAttribute("aria-label") ?? "").startsWith("教材："),
+  );
+  expect(!!pickerBtn, "第一步没有「教材」选择按钮");
+  if (pickerBtn) {
+    pickerBtn.click();
+    await wait(500);
+    const dialog = doc.querySelector('[role="dialog"]');
+    expect(!!dialog, "点教材按钮后没有弹出选择框");
+    if (dialog) {
+      // aria-pressed 的选项块可能被 Mantine 的 portal 渲染到别处，
+      // 所以从整个 document 里找，不用限定在 dialog 内
+      const tiles = [...doc.querySelectorAll('button[aria-pressed]')];
+      marks.tiles = tiles.length;
+      expect(tiles.length >= 1, `教材弹窗里没有选项（${tiles.length}）`);
+      // 逐个点掉已选的，模拟清空
+      for (const t of tiles) {
+        if (t.getAttribute("aria-pressed") === "true") {
+          t.click();
+          await wait(120);
+        }
+      }
+      // 关掉弹窗
+      [...dialog.querySelectorAll("button")]
+        .find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"))
+        ?.click();
+      await wait(300);
+    }
   }
+
   const nextBtn = [...doc.querySelectorAll("button")].find(
     (n) => n.textContent?.trim() === "下一步",
   );
-  expect(!!nextBtn, "找不到「下一步」按钮");
-  expect(nextBtn?.disabled === true, "教材一个都没选时「下一步」仍可点（必填校验失效）");
+  expect(nextBtn?.disabled === true, "教材一个都没选时「下一步」仍可点");
   expect(bodyText().includes("至少选一本书"), "没选教材时没有提示");
 
-  // 把教材重新选回来，后续步骤才走得下去
-  const openSelect = [...doc.querySelectorAll("input")].find((n) =>
-    (n.getAttribute("placeholder") ?? "").includes("选一本或多本"),
+  // 重新选回来
+  const pickerBtn2 = [...doc.querySelectorAll("button")].find((n) =>
+    (n.getAttribute("aria-label") ?? "").startsWith("教材："),
   );
-  if (openSelect) {
-    openSelect.focus();
-    openSelect.click();
-    await wait(300);
-    for (const opt of [...doc.querySelectorAll('[role="option"]')]) {
-      opt.click();
-      await wait(120);
+  if (pickerBtn2) {
+    pickerBtn2.click();
+    await wait(400);
+    const d2 = doc.querySelector('[role="dialog"]');
+    const tiles = [...doc.querySelectorAll("button[aria-pressed]")];
+    for (const t of tiles) {
+      if (t.getAttribute("aria-pressed") === "false") {
+        t.click();
+        await wait(100);
+        break; // 选一本就够
+      }
     }
-    await wait(300);
+    [...(d2?.querySelectorAll("button") ?? [])]
+      .find((b) => (b.getAttribute("aria-label") ?? "").toLowerCase().includes("close"))
+      ?.click();
+    await wait(400);
   }
-  expect(
-    (doc.querySelectorAll(".mantine-Pill-remove").length ?? 0) > 0,
-    "没能重新选回教材（预览会卡在第一步）",
+  const nextBtn2 = [...doc.querySelectorAll("button")].find(
+    (n) => n.textContent?.trim() === "下一步",
   );
+  expect(nextBtn2?.disabled === false, "选回教材后「下一步」仍禁用");
 
   // 逐步前进
   const forward = async (steps, label) => {
@@ -225,5 +258,7 @@ if (problems.length) {
 }
 
 console.log("✓ 预览版渲染与交互均正常");
-console.log("  首页 → 关于 → 向导 5 步 → 问号弹窗 → 回退，全部走通");
+console.log(
+  `  首页 → 关于 → 向导 5 步 → 选择器弹窗（${marks.tiles} 个选项）→ 必填校验 → 回退`,
+);
 if (realErrors.length) console.log("  （忽略的警告：", realErrors.slice(0, 2).join(" | "), "）");
