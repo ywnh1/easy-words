@@ -275,6 +275,30 @@ pnpm preview:verify  # = node scripts/verify_preview.mjs
 两个词条数不一样是正常的：1601 是库里的行数（同一个词在不同单元各占一行），
 1580 是合并同形词后的题量。全量 1580 条导出实测：PDF 1.3 秒、DOCX 0.14 秒。
 
+## 发布流程（手动）
+
+CI 只负责构建与上传 artifact，**不自动发 release** ——
+tag 触发过自动发版，结果和手动 release 撞车、附件重复，已去掉 tag 监听。
+
+发版步骤：
+
+```sh
+# 1. 从 CI 产物或本地构建拿到 apk / exe / msi
+# 2. 打 tag（用 API 更稳，git push 在本机会被 TLS 中断）
+SHA=$(git rev-parse HEAD)
+gh api repos/ywnh1/easy-words/git/refs -X POST \
+  -f ref="refs/tags/v0.1.0" -f sha="$SHA"
+# 3. 建 release 并上传
+gh release create v0.1.0 <文件...> --title "Easy Words 0.1.0" \
+  --notes-file notes.md --verify-tag
+```
+
+APK 用项目内 `keystore/easywords.jks` 签名（SHA-256
+`9A:D0:D1:7E:...:D1:1F`），后续版本可覆盖安装。发版前可用
+`apksigner verify --print-certs` 核对指纹。
+
+只打 arm64 一个 ABI：覆盖绝大多数真机，四个 ABI 全打会让 CI 时长翻几倍。
+
 ## 当前状态
 
 已完成：四本教材 + 扩充短语 + 释义 + 例句；四种卷面（四选 n / 句子 / 选词填空 / 笔记）；
