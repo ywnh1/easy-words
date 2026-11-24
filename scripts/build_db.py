@@ -66,6 +66,17 @@ BOOKS = [
         "unit_label": "UNIT",
         "sort_order": 40,
     },
+    {
+        "id": "waiyanshe-selective-2",
+        "title": "高中英语选择性必修第二册",
+        "publisher": "外研社",
+        "series": "高中英语",
+        "volume": "选择性必修第二册",
+        "level": "high-school",
+        "kind": "textbook",
+        "unit_label": "UNIT",
+        "sort_order": 50,
+    },
 ]
 
 SCHEMA = """
@@ -179,12 +190,14 @@ def read_tsv(path: Path) -> list[list[str]]:
 
 
 def load_phrase_zh() -> dict[str, tuple[str, str]]:
-    """扩充短语的中文释义：牛津抽取的优先，缺的用自撰的补。"""
+    """扩充短语的中文释义。
+
+    扫 data/phrases/zh-*.tsv，所以加一本新书只要多放一个文件，
+    不用改这里。文件名排序决定覆盖顺序：后读到的覆盖先读到的，
+    命名时把「更权威」的排在后面（zh-own < zh-selective-2 < zh-oxford）。
+    """
     out: dict[str, tuple[str, str]] = {}
-    for name in ("zh-own.tsv", "zh-oxford.tsv"):
-        p = ROOT / "data/phrases" / name
-        if not p.exists():
-            continue
+    for p in sorted((ROOT / "data/phrases").glob("zh-*.tsv")):
         for row in read_tsv(p):
             if len(row) < 2:
                 continue

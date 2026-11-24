@@ -203,7 +203,9 @@ Droid 不含拉丁字母，所以必须两套并用，`pdf.rs` 里按字符分�
 
 **词标记**：教材只有两种前置符号 —— `•` 小圆点（与加星同级，存 `star`）
 和 `□` 空心方框（选择性必修词，存 `box`）。
-事实：**只有必修 1/2/3 有方框词，选择性必修一没有**。
+事实：**只有必修 1/2/3 有方框词，选择性必修一、二都没有**。
+选必二的扫描件把部分星号印成了小圆点 `•`，页脚只解释了 `*`，
+经确认圆点就是星号，统一存 `star`。
 早先把 `•` 当成方框，让选必一凭空多出 12 条方框词。
 `marker_facts_match_textbooks` 这个测试就是盯这个事实的。
 
@@ -216,15 +218,13 @@ Droid 不含拉丁字母，所以必须两套并用，`pdf.rs` 里按字符分�
 **Android 存储**：scoped storage 不允许直接写公共 Download。
 API 29+ 走 MediaStore，API 24-28 走外部存储目录 + MediaScanner（`MediaStore.Downloads` 在旧版本不存在，直接引用会崩）。
 
-**Android 构建**：本机可以验证，不用等 CI：
+**Android 构建**：交给 CI。本机不装 NDK（已删除），
+`cargo check --target aarch64-linux-android` 会因为找不到
+`aarch64-linux-android24-clang` 而失败 —— 这不是代码问题。
 
-```sh
-cd src-tauri
-NDK=$HOME/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin
-export CC_aarch64_linux_android=$NDK/aarch64-linux-android24-clang
-export AR_aarch64_linux_android=$NDK/llvm-ar
-cargo check --target aarch64-linux-android
-```
+本地只能验证桌面端：`cargo test`、`pnpm typecheck`、`verify_preview.mjs`。
+Android 的编译错误（尤其 `#[cfg(target_os = "android")]` 那段）只有 CI 能暴露，
+所以推送前务必确认 CI 的 Android job 是通过的。
 
 **生成的 Android 工程会重置**：`tauri android init` 每次都重新生成 `gen/android`。
 所以图标注入、签名注入、本地插件挂载都写成脚本，在 CI 里 init 之后跑：
@@ -243,7 +243,7 @@ node scripts/verify_preview.mjs             # jsdom 真跑一遍界面，点按�
 ```sh
 cargo test -- --ignored sample_pdfs        # 生成样例 PDF 到 /tmp/samples
 cargo test -- --ignored sample_docx        # 生成样例 Word 到 /tmp/samples-docx
-cargo test -- --ignored full_export --nocapture   # 全量 1580 条的耗时
+cargo test -- --ignored full_export --nocapture   # 全量 1992 条的耗时
 ```
 
 `verify_preview` 会检查：渲染非空、文案存在、无外部资源请求、无运行时错误，
@@ -266,14 +266,22 @@ pnpm preview:verify  # = node scripts/verify_preview.mjs
 
 | 项 | 数量 |
 | --- | --- |
-| 词条行数 | 1601（教材词 1323 + 扩充短语 278），来自 `entries` 表 |
-| 去重后词形 | 1580 —— 查询层会把同形词合并，题量按这个算 |
-| 例句 | 2549 |
-| 释义 | 13795 条，来自 4 个来源 |
+| 词条行数 | 2019（教材词 1666 + 扩充短语 353），来自 `entries` 表 |
+| 去重后词形 | 1992 —— 查询层会把同形词合并，题量按这个算 |
+| 例句 | 2553 |
+| 释义 | 9994 条，来自 4 个来源 |
 | 测试 | Rust 27 个（db 11 / pdf 13 / docx 3） |
 
-两个词条数不一样是正常的：1601 是库里的行数（同一个词在不同单元各占一行），
-1580 是合并同形词后的题量。全量 1580 条导出实测：PDF 1.3 秒、DOCX 0.14 秒。
+两个词条数不一样是正常的：2019 是库里的行数（同一个词在不同单元各占一行），
+1992 是合并同形词后的题量。全量导出实测：PDF 3.0 秒、DOCX 0.3 秒。
+
+| 书 | 教材词 | 扩充短语 |
+| --- | --- | --- |
+| 必修第一册 | 411 | 80 |
+| 必修第二册 | 363 | 75 |
+| 必修第三册 | 283 | 65 |
+| 选择性必修第一册 | 266 | 58 |
+| 选择性必修第二册 | 343 | 75 |
 
 ## 发布流程（手动）
 
@@ -301,7 +309,7 @@ APK 用项目内 `keystore/easywords.jks` 签名（SHA-256
 
 ## 当前状态
 
-已完成：四本教材 + 扩充短语 + 释义 + 例句；四种卷面（四选 n / 句子 / 选词填空 / 笔记）；
+已完成：五本教材 + 扩充短语 + 释义 + 例句；四种卷面（四选 n / 句子 / 选词填空 / 笔记）；
 PDF 与 Word 双格式；Android 保存到公共下载目录并调起系统分享；Windows 安装包；
 GitHub Actions 双端构建并通过签名。
 

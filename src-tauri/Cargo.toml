@@ -1,6 +1,6 @@
 [package]
 name = "easy-words"
-version = "0.1.0"
+version = "0.2.0"
 description = "外研社高中英语词汇出题器"
 authors = ["ywnh1"]
 edition = "2021"

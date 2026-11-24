@@ -656,6 +656,7 @@ mod tests {
                 "waiyanshe-required-2".into(),
                 "waiyanshe-required-3".into(),
                 "waiyanshe-selective-1".into(),
+                "waiyanshe-selective-2".into(),
             ],
             ..Default::default()
         };
@@ -847,14 +848,12 @@ mod tests {
             assert!(count(b, "none") > 0, "{b} 应该有普通词");
         }
 
-        // 选择性必修一：没有方框
-        assert_eq!(
-            count("waiyanshe-selective-1", "box"),
-            0,
-            "选择性必修一不该有方框词"
-        );
-        assert!(count("waiyanshe-selective-1", "star") > 0);
-        assert!(count("waiyanshe-selective-1", "none") > 0);
+        // 选择性必修一、二：没有方框
+        for b in ["waiyanshe-selective-1", "waiyanshe-selective-2"] {
+            assert_eq!(count(b, "box"), 0, "{b} 不该有方框词");
+            assert!(count(b, "star") > 0, "{b} 应该有星号词");
+            assert!(count(b, "none") > 0, "{b} 应该有普通词");
+        }
     }
 
     #[test]
