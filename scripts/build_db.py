@@ -135,6 +135,13 @@ CREATE TABLE examples (
     label    TEXT NOT NULL DEFAULT ''
 );
 
+-- 内容指纹：写库时算一遍，应用启动时拿它和编译进二进制的值比对，
+-- 不一致就整库替换。这样加书不用记得改任何版本号。
+CREATE TABLE meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX idx_entries_unit    ON entries(book_id, unit_no);
 CREATE INDEX idx_entries_page    ON entries(book_id, page);
 CREATE INDEX idx_entries_initial ON entries(initial);
@@ -143,7 +150,7 @@ CREATE INDEX idx_entries_marker  ON entries(marker);
 CREATE INDEX idx_examples_entry  ON examples(entry_id);
 CREATE INDEX idx_senses_entry    ON senses(entry_id);
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 """
 
 # 扫描件里出现过的 marker 别名，统一归一。
@@ -178,6 +185,19 @@ def same_sense(a: str, b: str) -> bool:
         return True
     sa, sb = set(a), set(b)
     return len(sa & sb) / max(len(sa), len(sb)) >= 0.6
+
+
+def fnv1a(text: str) -> str:
+    """FNV-1a 64 位，输出 16 位十六进制。
+
+    只要求『内容变→值变』，不要求加密强度，所以不引依赖。
+    算法写在这里，Rust 侧只读结果，不做第二份实现。
+    """
+    h = 0xCBF29CE484222325
+    for b in text.encode("utf-8"):
+        h ^= b
+        h = (h * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{h:016x}"
 
 
 def read_tsv(path: Path) -> list[list[str]]:
@@ -392,6 +412,24 @@ def main() -> int:
         stats.append(f"  {book['id']}: {n_book} 词 + {n_phrase} 扩充短语")
 
     con.commit()
+
+    # 内容指纹：书 + 每本的词条数。应用启动时拿它和编译进去的值比对，
+    # 不一致就整库替换 —— 这样加书不用记得改任何版本号。
+    fp_src = "|".join(
+        f"{r[0]}:{r[1]}"
+        for r in con.execute(
+            "SELECT b.id, COUNT(e.id) FROM books b"
+            " LEFT JOIN entries e ON e.book_id = b.id"
+            " GROUP BY b.id ORDER BY b.id"
+        )
+    )
+    fingerprint = fnv1a(fp_src)
+    con.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES('fingerprint', ?)",
+        (fingerprint,),
+    )
+    con.commit()
+
     con.execute("VACUUM")
     con.commit()
 
@@ -399,6 +437,9 @@ def main() -> int:
         "SELECT COUNT(*) FROM entries WHERE source_kind='extra' AND meaning=''"
     ).fetchone()[0]
     con.close()
+
+    fp_file = DB.parent / "seed.fingerprint"
+    fp_file.write_text(fingerprint + "\n", encoding="utf-8")
 
     print("\n".join(stats), file=sys.stderr)
     print(

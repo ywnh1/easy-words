@@ -226,6 +226,12 @@ API 29+ 走 MediaStore，API 24-28 走外部存储目录 + MediaScanner（`Media
 Android 的编译错误（尤其 `#[cfg(target_os = "android")]` 那段）只有 CI 能暴露，
 所以推送前务必确认 CI 的 Android job 是通过的。
 
+**种子库替换靠内容指纹，不是版本号**：`ensure_db` 会比较库里的 `meta.fingerprint`
+与 `resources/seed.fingerprint`（由 build_db.py 生成、`include_str!` 编进二进制）。
+不一致就整库替换。早先用 `PRAGMA user_version` 判断，但加书不改 schema，
+旧库永远不会被替换 —— 用户装了带新书的版本，打开仍只有旧数据。
+`stale_db_is_replaced_by_fingerprint` 这个测试盯住它。
+
 **生成的 Android 工程会重置**：`tauri android init` 每次都重新生成 `gen/android`。
 所以图标注入、签名注入、本地插件挂载都写成脚本，在 CI 里 init 之后跑：
 `patch-android-signing.mjs`、`link-android-plugins.py`。

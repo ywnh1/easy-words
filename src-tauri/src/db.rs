@@ -11,7 +11,15 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub const SEED: &[u8] = include_bytes!("../resources/seed.sqlite");
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
+
+/// 内嵌种子库的内容指纹，由 scripts/build_db.py 生成。
+///
+/// 为什么不用 schema 版本判断新旧：加一本新书不改 schema，
+/// user_version 不变，旧库就永远不会被替换 —— 用户装了带新书的版本
+/// 打开仍只有旧数据（选必二就这么丢过一次）。
+/// 换成内容指纹后，只要词库变了，磁盘上的旧库必被覆盖。
+const SEED_FINGERPRINT: &str = include_str!("../resources/seed.fingerprint");
 
 #[derive(Debug, Serialize)]
 pub struct Bucket {
@@ -100,11 +108,26 @@ pub fn ensure_db(path: &Path) -> rusqlite::Result<()> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
+    let expected = SEED_FINGERPRINT.trim();
     let ok = match Connection::open(path) {
-        Ok(con) => con
-            .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
-            .map(|v| v >= SCHEMA_VERSION)
-            .unwrap_or(false),
+        Ok(con) => {
+            let schema_ok = con
+                .query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))
+                .map(|v| v == SCHEMA_VERSION)
+                .unwrap_or(false);
+            if !schema_ok {
+                false
+            } else {
+                // 指纹取自书与各书词条数；读不到（老版本没有 meta 表）就当不匹配
+                con.query_row(
+                    "SELECT value FROM meta WHERE key='fingerprint'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .map(|v| v == expected)
+                .unwrap_or(false)
+            }
+        }
         Err(_) => false,
     };
     if !ok {
@@ -819,6 +842,47 @@ mod tests {
         let mut sorted = initials.clone();
         sorted.sort();
         assert_eq!(initials, sorted, "首字母顺序不对");
+    }
+
+    /// 加书后，磁盘上的旧库必须被自动替换。
+    ///
+    /// 这个测试盯的是一个真实事故：ensure_db 曾用 schema 版本判断新旧，
+    /// 而加书不改 schema，于是用户装了带新书的版本，打开仍只有旧数据。
+    #[test]
+    fn stale_db_is_replaced_by_fingerprint() {
+        let dir = std::env::temp_dir().join(format!("easywords-stale-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("t.sqlite");
+
+        // 造一个「旧库」：正常的种子库，但删掉最后一本书并改掉指纹
+        ensure_db(&p).unwrap();
+        {
+            let con = open(&p).unwrap();
+            let last: String = con
+                .query_row("SELECT id FROM books ORDER BY sort_order DESC LIMIT 1", [], |r| r.get(0))
+                .unwrap();
+            con.execute("DELETE FROM books WHERE id=?1", [&last]).unwrap();
+            con.execute(
+                "UPDATE meta SET value='0000000000000000' WHERE key='fingerprint'",
+                [],
+            )
+            .unwrap();
+            let n: i64 = con.query_row("SELECT COUNT(*) FROM books", [], |r| r.get(0)).unwrap();
+            assert!(n >= 4, "删除后应还剩几本书，实际 {n}");
+        }
+
+        // 再启动一次：指纹不符，应整库替换回完整种子库
+        ensure_db(&p).unwrap();
+        let con = open(&p).unwrap();
+        let books = catalog(&con).unwrap();
+        assert!(
+            books.iter().any(|b| b.id == "waiyanshe-selective-2"),
+            "旧库没有被替换，选必二仍缺失：{:?}",
+            books.iter().map(|b| &b.id).collect::<Vec<_>>()
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 教材印刷符号的事实：只有必修 1/2/3 有方框词，
